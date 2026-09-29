@@ -1,8 +1,9 @@
 from pathlib import Path
+import re
 
 # Final VoxBook 1.0 polish: keep startup progress timers aligned with actual
-# playback start, and render PDF pages losslessly so the on-screen page matches
-# the source PDF as closely as Android PdfRenderer allows.
+# playback start, render PDF pages losslessly, and repair escaped Java newline
+# literals after the build-time PDF reader patch.
 
 p=Path('web/src/main.js')
 s=p.read_text()
@@ -13,6 +14,15 @@ p.write_text(s)
 
 j=Path('app/src/main/java/com/varoxan/voxbook/MainActivity.java')
 js=j.read_text()
+
+# prepare_v100.py replaces a complete Java method with re.sub. Backslashes in a
+# replacement string can be interpreted by Python's regex engine, so repair any
+# accidental literal line breaks inside these Java string literals using lambda
+# replacements (which preserve the intended escaped backslashes exactly).
+js=re.sub(r'stripper\.setLineSeparator\("\s*"\);', lambda m: 'stripper.setLineSeparator("\\n");', js)
+js=re.sub(r'stripper\.setParagraphStart\("\s*"\);', lambda m: 'stripper.setParagraphStart("\\n\\n");', js)
+js=re.sub(r'stripper\.setParagraphEnd\("\s*"\);', lambda m: 'stripper.setParagraphEnd("\\n\\n");', js)
+
 js=js.replace('bitmap.compress(Bitmap.CompressFormat.JPEG, 94, bos);', 'bitmap.compress(Bitmap.CompressFormat.PNG, 100, bos);')
 js=js.replace('JSONObject.quote("data:image/jpeg;base64," + b64)', 'JSONObject.quote("data:image/png;base64," + b64)')
 j.write_text(js)
