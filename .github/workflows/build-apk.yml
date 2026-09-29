@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v02]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,9 +20,16 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build VoxBook interface and AI runtime
+      - name: Prepare VoxBook 0.3 web UI
         working-directory: web
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/main.js')
+          s=p.read_text()
+          s=s.replace("l==='de'?'german':'english'", "l==='de'?'german':'english_2026-04'")
+          p.write_text(s)
+          PY
           npm install --no-audit --no-fund
           npm run build
           rm -rf ../app/src/main/assets/vox
