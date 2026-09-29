@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v061]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v070]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,6 +26,9 @@ jobs:
 
       - name: Prepare VoxBook 0.6.1 narrator engine
         run: python tools/prepare_v060.py
+
+      - name: Prepare VoxBook 0.7 background and UI
+        run: python tools/prepare_v070.py
 
       - name: Install web dependencies
         working-directory: web
@@ -56,14 +59,16 @@ jobs:
       - name: Build installable debug APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.6.1.apk
+      - name: Prepare APK files
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.7.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.6.1-APK
-          path: VoxBook-0.6.1.apk
+          name: VoxBook-0.7.0-APK
+          path: VoxBook-0.7.0.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -71,8 +76,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.6.1 >/dev/null 2>&1; then
-            gh release upload v0.6.1 VoxBook-0.6.1.apk --clobber
+          if gh release view v0.7.0 >/dev/null 2>&1; then
+            gh release upload v0.7.0 VoxBook.apk VoxBook-0.7.0.apk --clobber
           else
-            gh release create v0.6.1 VoxBook-0.6.1.apk --title "VoxBook 0.6.1 – Tester Build" --notes "Private tester build of VoxBook 0.6.1. Android may ask you to allow installation from unknown sources."
+            gh release create v0.7.0 VoxBook.apk VoxBook-0.7.0.apk --title "VoxBook 0.7.0 – Background & Live Update" --notes "Tester build. Adds background playback support, continuous next-passage pre-generation, clearer controls, selectable color themes, and automatic update checks. Android still requires user confirmation to install APK updates outside the Play Store."
           fi
