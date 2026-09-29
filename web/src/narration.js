@@ -113,7 +113,9 @@ export function buildNarrationSegments(raw, language='de', options={}){
   const out=[];
   let current='';
   let pendingHeading='';
-  const target=520, max=720, min=220;
+  // Short complete passages: quick first start, but each passage is rendered as
+  // one continuous PCM buffer so words can never be split by stream underruns.
+  const target=220, max=320, min=100;
   const flush=()=>{ if(current.trim()){out.push(current.trim());current='';} };
 
   for(const block0 of blocks){
@@ -129,6 +131,7 @@ export function buildNarrationSegments(raw, language='de', options={}){
       let sentence=sentence0.trim();
       if(!sentence) continue;
       if(!/[.!?]$/.test(sentence) && sentence.length<180) sentence+='.';
+      // Never split inside a sentence. A long sentence remains one passage.
       if(current && current.length+sentence.length+1>max) flush();
       current+=(current?' ':'')+sentence;
       const dialogueStart=/^[„“"'‘’]/.test(sentence);
