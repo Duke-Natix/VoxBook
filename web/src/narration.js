@@ -8,168 +8,222 @@ const ACRONYMS = new Set([
 function romanToInt(value){
   const s=String(value||'').toUpperCase();
   if(!ROMAN.test(s)) return null;
-  let total=0, prev=0;
+  let total=0,prev=0;
   for(let i=s.length-1;i>=0;i--){
     const n=ROMAN_VALUES[s[i]]||0;
-    if(n<prev) total-=n; else { total+=n; prev=n; }
+    if(n<prev) total-=n; else {total+=n;prev=n;}
   }
-  if(total<1 || total>3999) return null;
-  return total;
+  return total>=1&&total<=3999?total:null;
 }
 
-function titleCaseWord(word, language){
+function titleCaseWord(word,language){
   const locale=language==='de'?'de-DE':'en-US';
   const lower=word.toLocaleLowerCase(locale);
   return lower.charAt(0).toLocaleUpperCase(locale)+lower.slice(1);
 }
 
-function normalizeAllCaps(text, language){
-  return text.replace(/\b[\p{Lu}ÄÖÜẞ][\p{Lu}ÄÖÜẞ]{2,}\b/gu,word=>{
+function normalizeAllCaps(text,language){
+  return String(text||'').replace(/\b[\p{Lu}ÄÖÜẞ][\p{Lu}ÄÖÜẞ]{2,}\b/gu,word=>{
     const upper=word.toLocaleUpperCase(language==='de'?'de-DE':'en-US');
-    if(ACRONYMS.has(upper) || ROMAN.test(upper)) return word;
+    if(ACRONYMS.has(upper)||ROMAN.test(upper)) return word;
     return titleCaseWord(word,language);
   });
 }
 
-function expandCommon(text, language){
+function expandCommon(text,language){
   let s=text;
-  const pairs = language==='de' ? [
+  const pairs=language==='de' ? [
     [/\bz\.\s*B\./gi,'zum Beispiel'],[/\bbzw\./gi,'beziehungsweise'],[/\bd\.\s*h\./gi,'das heißt'],[/\bu\.\s*a\./gi,'unter anderem'],[/\bca\./gi,'circa'],[/\busw\./gi,'und so weiter'],[/\bDr\./g,'Doktor'],[/\bNr\./gi,'Nummer']
   ] : [
     [/\be\.\s*g\./gi,'for example'],[/\bi\.\s*e\./gi,'that is'],[/\bMr\./g,'Mister'],[/\bMrs\./g,'Misses'],[/\bDr\./g,'Doctor'],[/\bNo\./g,'Number']
   ];
   for(const [re,to] of pairs) s=s.replace(re,to);
-  s=s.replace(/\s*&\s*/g, language==='de'?' und ':' and ');
-  return s;
+  return s.replace(/\s*&\s*/g,language==='de'?' und ':' and ');
 }
 
-function replaceRomans(text, language){
+function replaceRomans(text,language){
   const chapterWord=language==='de'?'Kapitel':'Chapter';
   let s=text;
-  const heading = /^(?:(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section)\s+)?([IVXLCDM]+)\.?$/i;
+  const heading=/^(?:(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section)\s+)?([IVXLCDM]+)\.?$/i;
   s=s.split('\n').map(line=>{
-    const t=line.trim();
-    const m=t.match(heading);
+    const t=line.trim(),m=t.match(heading);
     if(!m) return line;
-    const upper=m[2].toUpperCase();
-    const n=romanToInt(upper);
+    const n=romanToInt(m[2]);
     if(!n) return line;
     if(m[1]) return `${m[1]} ${n}.`;
-    if(language==='en' && upper==='I') return `${chapterWord} 1.`;
+    if(language==='en'&&m[2].toUpperCase()==='I') return `${chapterWord} 1.`;
     return `${chapterWord} ${n}.`;
   }).join('\n');
   s=s.replace(/\b(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section)\s+([IVXLCDM]+)\b/gi,(all,prefix,r)=>{
-    const n=romanToInt(r); return n?`${prefix} ${n}`:all;
+    const n=romanToInt(r);return n?`${prefix} ${n}`:all;
   });
-  s=s.replace(/\b(II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX|XXI|XXII|XXIII|XXIV|XXV|XXX|XL|L|LX|LXX|LXXX|XC|C)\b/g,r=>String(romanToInt(r)||r));
-  if(language==='de') s=s.replace(/(^|[\s(\[])(I)(?=[\s).,:;!?\]])/g,(m,p)=>p+'1');
   return s;
 }
 
-export function prepareNarrationText(raw, language='de'){
+function looksHeading(block){
+  const t=String(block||'').trim();
+  if(!t||t.length>100||/[!?]$/.test(t)) return false;
+  if(/^(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section|Inhalt|Contents|Prolog|Prologue|Epilog|Epilogue)\b/i.test(t)) return true;
+  const words=t.split(/\s+/);
+  return words.length<=7&&!/[.!?]$/.test(t)&&(/^[\p{Lu}\d\s:,'’"„“\-–—]+$/u.test(t)||words.length<=2);
+}
+
+function normalizeListPrefix(line){
+  let s=line.trim();
+  let m=s.match(/^([IVXLCDM]+)[.)]\s+(.+)$/i);
+  if(m){const n=romanToInt(m[1]);if(n)s=`${n}. ${m[2]}`;return {text:s,isList:true};}
+  m=s.match(/^(\d{1,3})[.)]\s+(.+)$/);
+  if(m) return {text:`${m[1]}. ${m[2]}`,isList:true};
+  m=s.match(/^[•●▪◦‣⁃*+-]\s+(.+)$/);
+  if(m) return {text:m[1],isList:true};
+  return {text:s,isList:false};
+}
+
+export function prepareNarrationText(raw,language='de'){
   let s=String(raw||'')
     .replace(/\u00ad/g,'')
     .replace(/[\u200B-\u200D\uFEFF]/g,'')
     .replace(/\u00a0/g,' ')
     .replace(/\r\n?/g,'\n');
 
+  // Only reconnect real word-wrap hyphenation. List dashes and intentional
+  // compounds remain untouched.
   s=s.replace(/([\p{L}])[-‐‑]\s*\n\s*([\p{Ll}äöüß])/gu,'$1$2');
 
-  const lines=s.split('\n');
-  const cleaned=[];
-  for(let rawLine of lines){
-    let line=rawLine.trim();
-    if(!line){ cleaned.push(''); continue; }
+  const rawLines=s.split('\n');
+  const blocks=[];
+  let paragraph=[];
+  const flush=()=>{
+    if(!paragraph.length) return;
+    const text=paragraph.join(' ').replace(/[ \t]{2,}/g,' ').trim();
+    if(text) blocks.push(text);
+    paragraph=[];
+  };
+
+  for(const sourceLine of rawLines){
+    let line=sourceLine.replace(/[ \t]+/g,' ').trim();
+    if(!line){flush();continue;}
     if(/^(?:Seite|Page)\s+\d+(?:\s+(?:von|of)\s+\d+)?\s*$/i.test(line)) continue;
+    if(/^\d{1,4}$/.test(line)) continue;
     if(/^(?:[-–—_=*#•·.]{2,}|[.·•])$/.test(line)) continue;
-    line=line.replace(/^[\s>*•●▪◦‣⁃]+/,'');
-    line=line.replace(/^([IVXLCDM]+)[.)]\s+/,(m,r)=>{const n=romanToInt(r);return n?`${n}. `:m});
-    line=line.replace(/^[-–—]\s+(?=\p{L}|["„“'‘’])/u,'');
-    line=line.replace(/\s+[-–—]\s+/g,', ');
-    line=line.replace(/\.{3,}|…/g,', ');
-    line=line.replace(/([!?])\1{1,}/g,'$1');
-    line=line.replace(/\s+([,.;:!?])/g,'$1');
-    line=line.replace(/([,;:])(?=\S)/g,'$1 ');
+
+    line=line.replace(/\.{3,}|…/g,', ')
+             .replace(/([!?])\1{1,}/g,'$1')
+             .replace(/\s+([,.;:!?])/g,'$1')
+             .replace(/([,;:])(?=\S)/g,'$1 ');
     line=normalizeAllCaps(line,language);
-    cleaned.push(line);
+
+    const list=normalizeListPrefix(line);
+    line=list.text;
+    if(looksHeading(line)||list.isList){
+      flush();
+      blocks.push(line);
+      continue;
+    }
+    paragraph.push(line);
   }
-  s=cleaned.join('\n').replace(/\n{3,}/g,'\n\n');
+  flush();
+
+  s=blocks.join('\n\n');
   s=replaceRomans(s,language);
   s=normalizeAllCaps(s,language);
   s=expandCommon(s,language);
-  s=s.replace(/(^|\s)[.·•](?=\s|$)/g,' ')
-     .replace(/,\s*,+/g,',')
-     .replace(/\.{2,}/g,'.')
-     .replace(/[ \t]{2,}/g,' ')
-     .replace(/ *\n */g,'\n')
-     .replace(/\n{3,}/g,'\n\n')
-     .trim();
-  return s;
+  return s.replace(/(^|\s)[.·•](?=\s|$)/g,' ')
+          .replace(/,\s*,+/g,',')
+          .replace(/\.{2,}/g,'.')
+          .replace(/[ \t]{2,}/g,' ')
+          .replace(/ *\n */g,'\n')
+          .replace(/\n{3,}/g,'\n\n')
+          .trim();
 }
 
-function splitSentences(text){
-  if(typeof Intl!=='undefined' && Intl.Segmenter){
+function splitSentences(text,language){
+  if(typeof Intl!=='undefined'&&Intl.Segmenter){
     try{
-      const seg=new Intl.Segmenter(undefined,{granularity:'sentence'});
+      const seg=new Intl.Segmenter(language==='de'?'de-DE':'en-US',{granularity:'sentence'});
       return Array.from(seg.segment(text),x=>x.segment.trim()).filter(Boolean);
     }catch{}
   }
   return (text.match(/[^.!?]+(?:[.!?]+[”"'’]?|$)/g)||[text]).map(x=>x.trim()).filter(Boolean);
 }
 
-function looksHeading(block){
-  const t=block.trim();
-  if(!t || t.length>90 || /[!?]$/.test(t)) return false;
-  if(/^(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section|Inhalt|Contents|Prolog|Prologue|Epilog|Epilogue)\b/i.test(t)) return true;
-  const words=t.split(/\s+/);
-  if(words.length<=8 && !/[.!?]$/.test(t) && (/^[\p{Lu}\d\s:,'’"„“\-–—]+$/u.test(t) || words.length<=3)) return true;
-  return false;
+function splitLongSentence(sentence,language,max=190,min=75){
+  const out=[];
+  let rest=sentence.trim();
+  const conjunctions=language==='de' ? [' und ',' aber ',' denn ',' weil ',' während ',' obwohl ',' damit ',' wenn ',' als '] : [' and ',' but ',' because ',' while ',' although ',' so that ',' when ',' as '];
+  while(rest.length>max){
+    let cut=-1;
+    const window=rest.slice(0,max+1);
+    for(let i=Math.min(max,window.length-1);i>=min;i--){
+      if(/[,:;–—]/.test(window[i])){cut=i+1;break;}
+    }
+    if(cut<0){
+      let best=-1;
+      for(const c of conjunctions){
+        const i=window.lastIndexOf(c);
+        if(i>=min&&i>best) best=i;
+      }
+      if(best>=min) cut=best;
+    }
+    if(cut<0){
+      const i=window.lastIndexOf(' ');
+      cut=i>=min?i:max;
+    }
+    let part=rest.slice(0,cut).trim();
+    rest=rest.slice(cut).trim();
+    if(part&&!/[,.!?;:]$/.test(part)) part+=',';
+    if(part) out.push(part);
+  }
+  if(rest) out.push(rest);
+  return out;
 }
 
 function narratorSentence(sentence){
-  let s=sentence.trim();
-  s=s.replace(/\s*;\s*/g,', ');
-  s=s.replace(/\s*:\s*/g,': ');
-  s=s.replace(/\s+([,.;:!?])/g,'$1');
-  if(!/[.!?]$/.test(s) && s.length<180) s+='.';
+  let s=sentence.trim()
+    .replace(/\s*;\s*/g,'; ')
+    .replace(/\s*:\s*/g,': ')
+    .replace(/\s+([,.;:!?])/g,'$1');
+  if(!/[.!?;,]$/.test(s)&&s.length<190) s+='.';
   return s;
 }
 
-export function buildNarrationSegments(raw, language='de', options={}){
+function isListBlock(block){return /^(?:\d{1,3}[.)]\s+|[IVXLCDM]+[.)]\s+|[•●▪◦‣⁃*+-]\s+)/i.test(block.trim());}
+
+export function buildNarrationSegments(raw,language='de',options={}){
   const clean=prepareNarrationText(raw,language);
   if(!clean) return [];
-  const blocks=clean.split(/\n\s*\n+/).map(x=>x.replace(/\s*\n\s*/g,' ').trim()).filter(Boolean);
+  const blocks=clean.split(/\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
   const out=[];
-  let current='';
-  let pendingHeading='';
-  const target=240, max=360, min=110;
-  const flush=()=>{ if(current.trim()){out.push(current.trim());current='';} };
 
   for(const block0 of blocks){
-    let block=block0;
+    const block=block0.replace(/[ \t]+/g,' ').trim();
+    if(!block) continue;
+
     if(looksHeading(block)){
-      if(current.length>=min) flush();
-      pendingHeading=/[.!?]$/.test(block)?block:block+'.';
+      out.push(/[.!?]$/.test(block)?block:block+'.');
       continue;
     }
-    if(pendingHeading){ block=pendingHeading+' '+block; pendingHeading=''; }
-    const sentences=splitSentences(block);
-    for(const sentence0 of sentences){
-      const sentence=narratorSentence(sentence0);
-      if(!sentence) continue;
-      if(current && current.length+sentence.length+1>max) flush();
-      current+=(current?' ':'')+sentence;
-      const dialogueStart=/^[„“"'‘’]/.test(sentence);
-      if(current.length>=target && (!options.dialogueMode || !dialogueStart)) flush();
-    }
-  }
-  if(pendingHeading) current+=(current?' ':'')+pendingHeading;
-  flush();
 
-  if(out.length>1 && out[out.length-1].length<min){
-    const last=out.pop();
-    if(out[out.length-1].length+last.length+1<=max*1.2) out[out.length-1]+=' '+last;
-    else out.push(last);
+    if(isListBlock(block)){
+      const listText=narratorSentence(block);
+      for(const part of splitLongSentence(listText,language,175,60)) out.push(narratorSentence(part));
+      continue;
+    }
+
+    const sentences=splitSentences(block,language);
+    let current='';
+    const flush=()=>{if(current.trim()){out.push(current.trim());current='';}};
+    for(const sentence0 of sentences){
+      for(const piece0 of splitLongSentence(sentence0,language,190,75)){
+        const piece=narratorSentence(piece0);
+        if(!piece) continue;
+        if(current&&current.length+piece.length+1>215) flush();
+        current+=(current?' ':'')+piece;
+        if(current.length>=130||/[!?]$/.test(piece)) flush();
+      }
+    }
+    flush();
   }
-  return out;
+
+  return out.filter(Boolean);
 }
