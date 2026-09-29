@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v100]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v110]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,6 +47,9 @@ jobs:
 
       - name: Prepare VoxBook 1.0 PDF and streaming engine
         run: python tools/prepare_v100.py
+
+      - name: Prepare VoxBook 1.1 media controls and collection
+        run: python tools/prepare_v110.py
 
       - name: Install web dependencies
         working-directory: web
@@ -104,14 +107,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.0.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.0.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.0.0-APK
-          path: VoxBook-1.0.0.apk
+          name: VoxBook-1.1.0-APK
+          path: VoxBook-1.1.0.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -119,10 +122,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.0.0 >/dev/null 2>&1; then
-            gh release upload v1.0.0 VoxBook.apk VoxBook-1.0.0.apk --clobber
+          if gh release view v1.1.0 >/dev/null 2>&1; then
+            gh release upload v1.1.0 VoxBook.apk VoxBook-1.1.0.apk --clobber
           else
-            gh release create v1.0.0 VoxBook.apk VoxBook-1.0.0.apk \
-              --title "VoxBook 1.0.0 – Original PDF & Streaming Narration" \
-              --notes "Shows PDF pages in their original visual layout, keeps narration page-aware, uses much shorter stable neural utterances, streams Pocket-TTS chunks directly into the native Android AudioTrack queue while speech is already playing, and keeps the persistent VoxBook signing identity for in-place updates from 0.9.2 and later."
+            gh release create v1.1.0 VoxBook.apk VoxBook-1.1.0.apk \
+              --title "VoxBook 1.1.0 – Media Controls, Voice Capture & Collection" \
+              --notes "Adds a real Android media notification with previous/play-pause/next controls and MediaSession integration, requests Android notification permission, improves foreground/background playback persistence, extends and cleans own-voice recording to 20 seconds, enlarges the reader and fixes long-title wrapping, adds a persistent Sammlung for previously opened PDFs, and shows 'Auf dem neuesten Stand!' when no newer update exists."
           fi
