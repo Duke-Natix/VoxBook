@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v060]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v061]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,7 +24,7 @@ jobs:
       - name: Prepare VoxBook 0.5 base
         run: python tools/prepare_v050.py
 
-      - name: Prepare VoxBook 0.6 narrator engine
+      - name: Prepare VoxBook 0.6.1 narrator engine
         run: python tools/prepare_v060.py
 
       - name: Install web dependencies
@@ -57,12 +57,12 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.6.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.6.1.apk
 
       - name: Upload VoxBook APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.6.0-APK
-          path: VoxBook-0.6.0.apk
+          name: VoxBook-0.6.1-APK
+          path: VoxBook-0.6.1.apk
           if-no-files-found: error
           retention-days: 30
