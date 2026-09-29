@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -59,10 +59,20 @@ jobs:
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.6.1.apk
 
-      - name: Upload VoxBook APK
+      - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: VoxBook-0.6.1-APK
           path: VoxBook-0.6.1.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish tester release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.6.1 >/dev/null 2>&1; then
+            gh release upload v0.6.1 VoxBook-0.6.1.apk --clobber
+          else
+            gh release create v0.6.1 VoxBook-0.6.1.apk --title "VoxBook 0.6.1 – Tester Build" --notes "Private tester build of VoxBook 0.6.1. Android may ask you to allow installation from unknown sources."
+          fi
