@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v041]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v042]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,19 +21,65 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare VoxBook 0.4.1 streaming audiobook engine
+      - name: Prepare VoxBook 0.4.2 continuous audiobook engine
         working-directory: web
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
+
           p=Path('src/main.js')
           s=p.read_text()
+
           if "./narration.js" not in s:
-              s=s.replace("import { PocketTTS, StreamingPlayer } from 'pocket-tts-js';", "import { PocketTTS, StreamingPlayer } from 'pocket-tts-js';\nimport { buildNarrationSegments } from './narration.js';")
+              s=s.replace(
+                  "import { PocketTTS, StreamingPlayer } from 'pocket-tts-js';",
+                  "import { PocketTTS, StreamingPlayer } from 'pocket-tts-js';\nimport { buildNarrationSegments } from './narration.js';"
+              )
+
           s=s.replace("l==='de'?'german':'english'", "l==='de'?'german':'english_2026-04'")
-          s=re.sub(r"function segments\(text\)\{.*?\}\nfunction lang", "function segments(text){return buildNarrationSegments(text,S.detected,{paragraphPauses:S.paragraphPauses,dialogueMode:S.dialogueMode})}\nfunction lang", s, flags=re.S)
-          new_ai=r'''async function aiNarrate(){
+          s=re.sub(
+              r"function segments\(text\)\{.*?\}\nfunction lang",
+              "function segments(text){return buildNarrationSegments(text,S.detected,{paragraphPauses:S.paragraphPauses,dialogueMode:S.dialogueMode})}\nfunction lang",
+              s,
+              flags=re.S
+          )
+
+          # One passage is passed to StreamingPlayer as ONE PCM buffer. Pocket-TTS may
+          # generate dozens of tiny chunks, but the listener never hears chunk borders.
+          # While passage N is playing, passage N+1 is generated in the worker.
+          new_ai=r'''function joinPcmChunks(chunks){
+            let total=0;
+            for(const c of chunks) total+=c.length;
+            const pcm=new Float32Array(total);
+            let offset=0;
+            for(const c of chunks){pcm.set(c,offset);offset+=c.length}
+            return pcm
+          }
+
+          async function generateWholePassage(text,voice,timeoutMs=30000){
+            const chunks=[];
+            let timer;
+            try{
+              await Promise.race([
+                S.ai.tts.generate(text,{
+                  voice,
+                  onChunk:(audio)=>{
+                    if(audio?.length) chunks.push(new Float32Array(audio));
+                  }
+                }),
+                new Promise((_,reject)=>{
+                  timer=setTimeout(()=>reject(new Error('VOXBOOK_PASSAGE_TIMEOUT')),timeoutMs);
+                })
+              ]);
+            }finally{
+              clearTimeout(timer);
+            }
+            if(!chunks.length) throw new Error('VOXBOOK_NO_AUDIO');
+            return joinPcmChunks(chunks)
+          }
+
+          async function aiNarrate(){
             const tok=++S.ai.token;
             const ok=await ensureAi();
             if(!ok||!S.playing||tok!==S.ai.token){S.playing=false;refreshPlayer();return}
@@ -49,62 +95,51 @@ jobs:
               localStorage.voiceMode='system';
               $('engineState').textContent='Systemstimme übernimmt';
               refreshPlayer();
-              toast('KI reagiert zu langsam – Systemstimme übernimmt.');
+              toast('KI ist auf diesem Gerät zu langsam – Systemstimme übernimmt.');
               systemNarrate();
             };
 
+            let first=true;
             while(S.playing&&tok===S.ai.token&&S.index<S.segments.length){
               refreshPlayer();
-              $('engineState').textContent='KI startet …';
-              let firstChunk=false;
-              let timeoutId;
+              $('engineState').textContent=first?'KI bereitet ersten Satz vor …':'Nächste Passage wird vorbereitet …';
+              let pcm;
               try{
-                await new Promise((resolve,reject)=>{
-                  let settled=false;
-                  timeoutId=setTimeout(()=>{
-                    if(settled||firstChunk)return;
-                    settled=true;
-                    try{S.ai.tts?.stop?.()}catch{}
-                    reject(new Error('VOXBOOK_TTS_START_TIMEOUT'));
-                  },12000);
-                  Promise.resolve(S.ai.tts.generate(S.segments[S.index],{
-                    voice:S.ai.activeVoice,
-                    onChunk:(audio,meta)=>{
-                      if(!S.playing||tok!==S.ai.token)return;
-                      if(!firstChunk){
-                        firstChunk=true;
-                        clearTimeout(timeoutId);
-                        $('engineState').textContent=S.ai.useOwnVoice?'Meine Stimme · spielt':'KI-Erzähler · spielt';
-                      }
-                      S.ai.player.play(audio,meta);
-                    }
-                  })).then(()=>{
-                    if(settled)return;
-                    settled=true;
-                    clearTimeout(timeoutId);
-                    resolve();
-                  }).catch(e=>{
-                    if(settled)return;
-                    settled=true;
-                    clearTimeout(timeoutId);
-                    reject(e);
-                  });
-                });
+                pcm=await generateWholePassage(S.segments[S.index],S.ai.activeVoice,30000);
               }catch(e){
                 console.error(e);
-                clearTimeout(timeoutId);
-                if(String(e?.message||e).includes('VOXBOOK_TTS_START_TIMEOUT')){fallbackToSystem();return}
+                if(String(e?.message||e).includes('VOXBOOK_PASSAGE_TIMEOUT')){fallbackToSystem();return}
                 S.playing=false;refreshPlayer();toast('KI-Vorlesen wurde unterbrochen.');return
               }
               if(!S.playing||tok!==S.ai.token)return;
-              if(!firstChunk){fallbackToSystem();return}
+
+              // One continuous AudioBuffer per passage. No model chunk can cut a word.
+              const isLast=S.index===S.segments.length-1;
+              S.ai.player.play(pcm,{isLast});
+              $('engineState').textContent=S.ai.useOwnVoice?'Meine Stimme · spielt flüssig':'KI-Erzähler · spielt flüssig';
+              first=false;
               S.index++;
               refreshPlayer();
+              // No await here: AudioContext is already playing this complete passage;
+              // the worker can synthesize the next passage at the same time.
             }
             try{S.ai.player?.flush?.()}catch{}
-            if(S.index>=S.segments.length)finish()
+            if(S.index>=S.segments.length){
+              $('engineState').textContent='Letzte Passage läuft …';
+              S.playing=false;
+              refreshPlayer();
+            }
           }'''
+
           s=re.sub(r"async function aiNarrate\(\)\{.*?\}\nfunction uiAi", new_ai+"\nfunction uiAi", s, flags=re.S)
+
+          # Since each passage is already one continuous PCM buffer, no extra jitter
+          # priming is required. A tiny scheduling lead prevents clock-edge clicks.
+          s=s.replace(
+              "new StreamingPlayer({sampleRate:S.ai.tts.sampleRate})",
+              "new StreamingPlayer({sampleRate:S.ai.tts.sampleRate,primeSeconds:0,leadSeconds:0.08})"
+          )
+
           p.write_text(s)
           PY
           npm install --no-audit --no-fund
@@ -128,12 +163,12 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.4.1.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.4.2.apk
 
       - name: Upload VoxBook APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.4.1-APK
-          path: VoxBook-0.4.1.apk
+          name: VoxBook-0.4.2-APK
+          path: VoxBook-0.4.2.apk
           if-no-files-found: error
           retention-days: 30
