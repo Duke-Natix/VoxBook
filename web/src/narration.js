@@ -55,7 +55,6 @@ export function prepareNarrationText(raw, language='de'){
     .replace(/\u00a0/g,' ')
     .replace(/\r\n?/g,'\n');
 
-  // Reconnect words that PDFs split only because of a line break.
   s=s.replace(/([\p{L}])[-‐‑]\s*\n\s*([\p{Ll}äöüß])/gu,'$1$2');
 
   const lines=s.split('\n');
@@ -114,7 +113,7 @@ export function buildNarrationSegments(raw, language='de', options={}){
   const out=[];
   let current='';
   let pendingHeading='';
-  const target=900, max=1200, min=340;
+  const target=520, max=720, min=220;
   const flush=()=>{ if(current.trim()){out.push(current.trim());current='';} };
 
   for(const block0 of blocks){
@@ -139,10 +138,9 @@ export function buildNarrationSegments(raw, language='de', options={}){
   if(pendingHeading) current+=(current?' ':'')+pendingHeading;
   flush();
 
-  // Tiny fragments cause audible stop/start edges, so merge the last one when safe.
   if(out.length>1 && out[out.length-1].length<min){
     const last=out.pop();
-    if(out[out.length-1].length+last.length+1<=max*1.25) out[out.length-1]+=' '+last;
+    if(out[out.length-1].length+last.length+1<=max*1.2) out[out.length-1]+=' '+last;
     else out.push(last);
   }
   return out;
