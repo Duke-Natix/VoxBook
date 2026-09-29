@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v092]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v100]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -45,11 +45,14 @@ jobs:
       - name: Prepare VoxBook 0.9.2 persistent signing baseline
         run: python tools/prepare_v092.py
 
+      - name: Prepare VoxBook 1.0 PDF and streaming engine
+        run: python tools/prepare_v100.py
+
       - name: Install web dependencies
         working-directory: web
         run: npm install --no-audit --no-fund
 
-      - name: Tune Pocket-TTS for stable narration
+      - name: Keep Pocket-TTS at upstream voice-quality defaults
         run: python tools/tune_pocket_tts.py
 
       - name: Build web bundle
@@ -101,14 +104,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.9.2.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.0.0.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.9.2-APK
-          path: VoxBook-0.9.2.apk
+          name: VoxBook-1.0.0-APK
+          path: VoxBook-1.0.0.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -116,10 +119,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.9.2 >/dev/null 2>&1; then
-            gh release upload v0.9.2 VoxBook.apk VoxBook-0.9.2.apk --clobber
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            gh release upload v1.0.0 VoxBook.apk VoxBook-1.0.0.apk --clobber
           else
-            gh release create v0.9.2 VoxBook.apk VoxBook-0.9.2.apk \
-              --title "VoxBook 0.9.2 – Persistent Update Baseline" \
-              --notes "First VoxBook APK explicitly signed with the persistent VoxBook Android signing identity. Users of older tester builds need one final uninstall/reinstall because those APKs used ephemeral runner signatures. From this baseline onward, future VoxBook APKs built with the same signing track can update the installed app in place. Also includes native Android AudioTrack narration, continuous AI look-ahead generation, shorter stable neural utterances, preserved PDF structure, background playback service and the native update downloader/installer."
+            gh release create v1.0.0 VoxBook.apk VoxBook-1.0.0.apk \
+              --title "VoxBook 1.0.0 – Original PDF & Streaming Narration" \
+              --notes "Shows PDF pages in their original visual layout, keeps narration page-aware, uses much shorter stable neural utterances, streams Pocket-TTS chunks directly into the native Android AudioTrack queue while speech is already playing, and keeps the persistent VoxBook signing identity for in-place updates from 0.9.2 and later."
           fi
