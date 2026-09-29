@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v04]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,14 +21,48 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare VoxBook 0.3 web UI
+      - name: Prepare VoxBook 0.4 audiobook engine
         working-directory: web
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p=Path('src/main.js')
           s=p.read_text()
+          if "./narration.js" not in s:
+              s=s.replace("import { PocketTTS, StreamingPlayer } from 'pocket-tts-js';", "import { PocketTTS, StreamingPlayer } from 'pocket-tts-js';\nimport { buildNarrationSegments } from './narration.js';")
           s=s.replace("l==='de'?'german':'english'", "l==='de'?'german':'english_2026-04'")
+          s=re.sub(r"function segments\(text\)\{.*?\}\nfunction lang", "function segments(text){return buildNarrationSegments(text,S.detected,{paragraphPauses:S.paragraphPauses,dialogueMode:S.dialogueMode})}\nfunction lang", s, flags=re.S)
+          new_ai=r'''async function aiNarrate(){
+            const tok=++S.ai.token;
+            const ok=await ensureAi();
+            if(!ok||!S.playing||tok!==S.ai.token){S.playing=false;refreshPlayer();return}
+            if(S.ai.useOwnVoice&&!S.ai.activeVoice){if(!await ownVoice()){S.playing=false;refreshPlayer();tab('voices');return}}
+            if(!S.ai.useOwnVoice&&!S.ai.activeVoice)await builtVoice();
+            if(!S.ai.activeVoice){toast('Keine KI-Stimme verfügbar.');S.playing=false;refreshPlayer();return}
+            let first=true;
+            while(S.playing&&tok===S.ai.token&&S.index<S.segments.length){
+              refreshPlayer();
+              $('engineState').textContent=first?'KI puffert für flüssiges Vorlesen …':(S.ai.useOwnVoice?'Meine Stimme · flüssig':'KI-Erzähler · flüssig');
+              const packet=[];
+              try{
+                await S.ai.tts.generate(S.segments[S.index],{
+                  voice:S.ai.activeVoice,
+                  onChunk:(audio,meta)=>packet.push({audio:new Float32Array(audio),meta})
+                });
+              }catch(e){
+                console.error(e);S.playing=false;refreshPlayer();toast('KI-Vorlesen wurde unterbrochen.');return
+              }
+              if(!S.playing||tok!==S.ai.token)return;
+              for(const c of packet) S.ai.player.play(c.audio,c.meta);
+              first=false;
+              S.index++;
+              refreshPlayer();
+            }
+            try{S.ai.player?.flush?.()}catch{}
+            if(S.index>=S.segments.length)finish()
+          }'''
+          s=re.sub(r"async function aiNarrate\(\)\{.*?\}\nfunction uiAi", new_ai+"\nfunction uiAi", s, flags=re.S)
           p.write_text(s)
           PY
           npm install --no-audit --no-fund
@@ -51,12 +86,12 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.4.apk
 
       - name: Upload VoxBook APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-APK
-          path: VoxBook.apk
+          name: VoxBook-0.4-APK
+          path: VoxBook-0.4.apk
           if-no-files-found: error
           retention-days: 30
