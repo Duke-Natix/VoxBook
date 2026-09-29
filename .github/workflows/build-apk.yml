@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v050]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v060]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,13 +21,22 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare VoxBook 0.5 sources
+      - name: Prepare VoxBook 0.5 base
         run: python tools/prepare_v050.py
+
+      - name: Prepare VoxBook 0.6 narrator engine
+        run: python tools/prepare_v060.py
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm install --no-audit --no-fund
+
+      - name: Tune Pocket-TTS for audiobook quality
+        run: python tools/tune_pocket_tts.py
 
       - name: Build web bundle
         working-directory: web
         run: |
-          npm install --no-audit --no-fund
           npm run build
           rm -rf ../app/src/main/assets/vox
           mkdir -p ../app/src/main/assets/vox
@@ -48,12 +57,12 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.5.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.6.0.apk
 
       - name: Upload VoxBook APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.5.0-APK
-          path: VoxBook-0.5.0.apk
+          name: VoxBook-0.6.0-APK
+          path: VoxBook-0.6.0.apk
           if-no-files-found: error
           retention-days: 30
