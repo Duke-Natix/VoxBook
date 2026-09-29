@@ -10,8 +10,8 @@ android {
         applicationId = "com.varoxan.voxbook"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -29,4 +29,5 @@ android {
 
 dependencies {
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("androidx.webkit:webkit:1.12.1")
 }
