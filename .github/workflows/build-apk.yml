@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v112]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v113]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -54,8 +54,26 @@ jobs:
       - name: Prepare VoxBook 1.1.1 PDF regex hotfix
         run: python tools/prepare_v111.py
 
-      - name: Prepare VoxBook 1.1.2 robust PDF cleanup and adaptive themes
+      - name: Prepare VoxBook 1.1.2 adaptive themes
         run: python tools/prepare_v112.py
+
+      - name: Prepare VoxBook 1.1.3 hard PDF cleanup fix
+        run: python tools/prepare_v113.py
+
+      - name: Verify unsafe PDF regex is gone
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          bad=[]
+          for p in Path('app/src/main').rglob('*'):
+              if p.suffix not in {'.java','.kt'}: continue
+              s=p.read_text(errors='ignore')
+              for needle in ('\\\\p{L}','\\\\p{Ll}','(?U)','(? U)'):
+                  if needle in s: bad.append((str(p),needle))
+          if bad:
+              raise SystemExit('Unsafe PDF regex still present: '+repr(bad))
+          print('PDF regex verification OK')
+          PY
 
       - name: Install web dependencies
         working-directory: web
@@ -113,14 +131,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.2.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.3.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.1.2-APK
-          path: VoxBook-1.1.2.apk
+          name: VoxBook-1.1.3-APK
+          path: VoxBook-1.1.3.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -128,10 +146,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.1.2 >/dev/null 2>&1; then
-            gh release upload v1.1.2 VoxBook.apk VoxBook-1.1.2.apk --clobber
+          if gh release view v1.1.3 >/dev/null 2>&1; then
+            gh release upload v1.1.3 VoxBook.apk VoxBook-1.1.3.apk --clobber
           else
-            gh release create v1.1.2 VoxBook.apk VoxBook-1.1.2.apk \
-              --title "VoxBook 1.1.2 – PDF Fix & Adaptive Story Theme" \
-              --notes "Removes the fragile Unicode-property PDF cleanup regex entirely and replaces it with safe character-based dehyphenation. Adds an optional dynamic colour scheme that follows the mood of the current story passage while preserving the manual theme as fallback. Keeps the 1.1 collection, media controls, background service and 20-second voice capture."
+            gh release create v1.1.3 VoxBook.apk VoxBook-1.1.3.apk \
+              --title "VoxBook 1.1.3 – Hard PDF Fix" \
+              --notes "Hard-replaces the entire PDF cleanup method without Unicode-property regex, adds a build-time guard that fails if the old pattern survives, preserves adaptive story colours, collection, media controls, background service and 20-second voice capture. PDF errors now include the running VoxBook version for diagnosis."
           fi
