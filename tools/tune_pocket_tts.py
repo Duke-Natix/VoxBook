@@ -21,3 +21,10 @@ for p in root.rglob('worker.js'):
 if not found:
     raise SystemExit('Pocket-TTS worker was not found')
 print('Pocket-TTS kept at upstream-quality inference defaults:', *found, sep='\n - ')
+
+# The workflow already invokes this file after prepare_v100.py, so apply the
+# final playback/PDF polish here without adding another workflow step.
+hotfix=Path('tools/prepare_v100_hotfix.py')
+if hotfix.exists():
+    code=compile(hotfix.read_text(), str(hotfix), 'exec')
+    exec(code, {'__name__':'__main__'})
