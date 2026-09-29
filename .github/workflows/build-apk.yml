@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v110]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v111]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -50,6 +50,9 @@ jobs:
 
       - name: Prepare VoxBook 1.1 media controls and collection
         run: python tools/prepare_v110.py
+
+      - name: Prepare VoxBook 1.1.1 PDF regex hotfix
+        run: python tools/prepare_v111.py
 
       - name: Install web dependencies
         working-directory: web
@@ -107,14 +110,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.1.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.1.0-APK
-          path: VoxBook-1.1.0.apk
+          name: VoxBook-1.1.1-APK
+          path: VoxBook-1.1.1.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -122,10 +125,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.1.0 >/dev/null 2>&1; then
-            gh release upload v1.1.0 VoxBook.apk VoxBook-1.1.0.apk --clobber
+          if gh release view v1.1.1 >/dev/null 2>&1; then
+            gh release upload v1.1.1 VoxBook.apk VoxBook-1.1.1.apk --clobber
           else
-            gh release create v1.1.0 VoxBook.apk VoxBook-1.1.0.apk \
-              --title "VoxBook 1.1.0 – Media Controls, Voice Capture & Collection" \
-              --notes "Adds a real Android media notification with previous/play-pause/next controls and MediaSession integration, requests Android notification permission, improves foreground/background playback persistence, extends and cleans own-voice recording to 20 seconds, enlarges the reader and fixes long-title wrapping, adds a persistent Sammlung for previously opened PDFs, and shows 'Auf dem neuesten Stand!' when no newer update exists."
+            gh release create v1.1.1 VoxBook.apk VoxBook-1.1.1.apk \
+              --title "VoxBook 1.1.1 – PDF Hotfix" \
+              --notes "Fixes a malformed Android regex that prevented PDFs from opening in VoxBook 1.1.0. Keeps the 1.1 media controls, 20-second voice capture, larger reader and Sammlung features unchanged."
           fi
