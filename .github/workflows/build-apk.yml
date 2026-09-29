@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v080]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v090]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,11 +36,14 @@ jobs:
       - name: Prepare VoxBook 0.8 seamless narration
         run: python tools/prepare_v080.py
 
+      - name: Prepare VoxBook 0.9 native seamless audio
+        run: python tools/prepare_v090.py
+
       - name: Install web dependencies
         working-directory: web
         run: npm install --no-audit --no-fund
 
-      - name: Tune Pocket-TTS for speed and stability
+      - name: Tune Pocket-TTS for stable narration
         run: python tools/tune_pocket_tts.py
 
       - name: Build web bundle
@@ -67,14 +70,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.8.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.9.0.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.8.0-APK
-          path: VoxBook-0.8.0.apk
+          name: VoxBook-0.9.0-APK
+          path: VoxBook-0.9.0.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -82,8 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.8.0 >/dev/null 2>&1; then
-            gh release upload v0.8.0 VoxBook.apk VoxBook-0.8.0.apk --clobber
+          if gh release view v0.9.0 >/dev/null 2>&1; then
+            gh release upload v0.9.0 VoxBook.apk VoxBook-0.9.0.apk --clobber
           else
-            gh release create v0.8.0 VoxBook.apk VoxBook-0.8.0.apk --title "VoxBook 0.8.0 – Seamless Narration" --notes "Tester build. Hardens Android foreground media playback, preserves PDF paragraphs and lists, splits overly long sentences at natural clause boundaries, and continuously prepares upcoming AI narration while current audio is playing."
+            gh release create v0.9.0 VoxBook.apk VoxBook-0.9.0.apk --title "VoxBook 0.9.0 – Native Seamless Audio" --notes "Moves AI audio playback into a native Android AudioTrack foreground service for gapless background playback, keeps generation running ahead while narration is playing, shortens neural utterances to reduce warble, preserves PDF structure, and adds a native APK update downloader/installer. Android still requires the user to approve APK installation."
           fi
