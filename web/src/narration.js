@@ -1,5 +1,9 @@
 const ROMAN = /^[IVXLCDM]+$/;
 const ROMAN_VALUES = {I:1,V:5,X:10,L:50,C:100,D:500,M:1000};
+const ACRONYMS = new Set([
+  'AI','KI','TTS','PDF','APK','CPU','GPU','USB','SSD','HDD','RAM','ROM','ONNX','API','URL','URI','HTTP','HTTPS','HTML','CSS','JS','JSON','XML',
+  'GPS','WLAN','WIFI','TV','PC','VR','AR','EU','USA','UK','UNO','NATO','FBI','CIA','DNA','RNA','ISBN','UHD','HD','LED','LCD','OLED','GTA','RPG','MMO','NPC'
+]);
 
 function romanToInt(value){
   const s=String(value||'').toUpperCase();
@@ -11,6 +15,20 @@ function romanToInt(value){
   }
   if(total<1 || total>3999) return null;
   return total;
+}
+
+function titleCaseWord(word, language){
+  const locale=language==='de'?'de-DE':'en-US';
+  const lower=word.toLocaleLowerCase(locale);
+  return lower.charAt(0).toLocaleUpperCase(locale)+lower.slice(1);
+}
+
+function normalizeAllCaps(text, language){
+  return text.replace(/\b[\p{Lu}ÄÖÜẞ][\p{Lu}ÄÖÜẞ]{2,}\b/gu,word=>{
+    const upper=word.toLocaleUpperCase(language==='de'?'de-DE':'en-US');
+    if(ACRONYMS.has(upper) || ROMAN.test(upper)) return word;
+    return titleCaseWord(word,language);
+  });
 }
 
 function expandCommon(text, language){
@@ -72,10 +90,12 @@ export function prepareNarrationText(raw, language='de'){
     line=line.replace(/([!?])\1{1,}/g,'$1');
     line=line.replace(/\s+([,.;:!?])/g,'$1');
     line=line.replace(/([,;:])(?=\S)/g,'$1 ');
+    line=normalizeAllCaps(line,language);
     cleaned.push(line);
   }
   s=cleaned.join('\n').replace(/\n{3,}/g,'\n\n');
   s=replaceRomans(s,language);
+  s=normalizeAllCaps(s,language);
   s=expandCommon(s,language);
   s=s.replace(/(^|\s)[.·•](?=\s|$)/g,' ')
      .replace(/,\s*,+/g,',')
@@ -100,10 +120,19 @@ function splitSentences(text){
 function looksHeading(block){
   const t=block.trim();
   if(!t || t.length>90 || /[!?]$/.test(t)) return false;
-  if(/^(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section)\b/i.test(t)) return true;
+  if(/^(Kapitel|Chapter|Teil|Part|Band|Book|Akt|Act|Abschnitt|Section|Inhalt|Contents|Prolog|Prologue|Epilog|Epilogue)\b/i.test(t)) return true;
   const words=t.split(/\s+/);
   if(words.length<=8 && !/[.!?]$/.test(t) && (/^[\p{Lu}\d\s:,'’"„“\-–—]+$/u.test(t) || words.length<=3)) return true;
   return false;
+}
+
+function narratorSentence(sentence){
+  let s=sentence.trim();
+  s=s.replace(/\s*;\s*/g,', ');
+  s=s.replace(/\s*:\s*/g,': ');
+  s=s.replace(/\s+([,.;:!?])/g,'$1');
+  if(!/[.!?]$/.test(s) && s.length<180) s+='.';
+  return s;
 }
 
 export function buildNarrationSegments(raw, language='de', options={}){
@@ -113,9 +142,7 @@ export function buildNarrationSegments(raw, language='de', options={}){
   const out=[];
   let current='';
   let pendingHeading='';
-  // Short complete passages: quick first start, but each passage is rendered as
-  // one continuous PCM buffer so words can never be split by stream underruns.
-  const target=220, max=320, min=100;
+  const target=240, max=360, min=110;
   const flush=()=>{ if(current.trim()){out.push(current.trim());current='';} };
 
   for(const block0 of blocks){
@@ -128,10 +155,8 @@ export function buildNarrationSegments(raw, language='de', options={}){
     if(pendingHeading){ block=pendingHeading+' '+block; pendingHeading=''; }
     const sentences=splitSentences(block);
     for(const sentence0 of sentences){
-      let sentence=sentence0.trim();
+      const sentence=narratorSentence(sentence0);
       if(!sentence) continue;
-      if(!/[.!?]$/.test(sentence) && sentence.length<180) sentence+='.';
-      // Never split inside a sentence. A long sentence remains one passage.
       if(current && current.length+sentence.length+1>max) flush();
       current+=(current?' ':'')+sentence;
       const dialogueStart=/^[„“"'‘’]/.test(sentence);
