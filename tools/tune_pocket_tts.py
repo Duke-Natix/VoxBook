@@ -8,9 +8,13 @@ for p in root.rglob('worker.js'):
     except Exception:
         continue
     old=s
-    s=s.replace('const CHUNK_GAP_SEC = 0.25;', 'const CHUNK_GAP_SEC = 0.10;')
-    s=s.replace('const LSD_STEPS = 1;', 'const LSD_STEPS = 2;')
-    s=s.replace('const TEMPERATURE = 0.7;', 'const TEMPERATURE = 0.42;')
+    # Keep inter-chunk silence tiny and favor deterministic, fast generation.
+    s=s.replace('const CHUNK_GAP_SEC = 0.25;', 'const CHUNK_GAP_SEC = 0.06;')
+    s=s.replace('const CHUNK_GAP_SEC = 0.10;', 'const CHUNK_GAP_SEC = 0.06;')
+    s=s.replace('const LSD_STEPS = 2;', 'const LSD_STEPS = 1;')
+    s=s.replace('const LSD_STEPS = 1;', 'const LSD_STEPS = 1;')
+    s=s.replace('const TEMPERATURE = 0.7;', 'const TEMPERATURE = 0.30;')
+    s=s.replace('const TEMPERATURE = 0.42;', 'const TEMPERATURE = 0.30;')
     if s!=old:
         p.write_text(s)
         changed.append(str(p))
