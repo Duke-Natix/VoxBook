@@ -8,13 +8,14 @@ for p in root.rglob('worker.js'):
     except Exception:
         continue
     old=s
-    # Keep inter-chunk silence tiny and favor deterministic, fast generation.
-    s=s.replace('const CHUNK_GAP_SEC = 0.25;', 'const CHUNK_GAP_SEC = 0.06;')
-    s=s.replace('const CHUNK_GAP_SEC = 0.10;', 'const CHUNK_GAP_SEC = 0.06;')
+    # VoxBook 0.9: keep model chunk joins essentially gapless and reduce
+    # stochastic drift/warble on longer narration while keeping inference fast.
+    for gap in ('0.25','0.10','0.06'):
+        s=s.replace(f'const CHUNK_GAP_SEC = {gap};', 'const CHUNK_GAP_SEC = 0.02;')
     s=s.replace('const LSD_STEPS = 2;', 'const LSD_STEPS = 1;')
     s=s.replace('const LSD_STEPS = 1;', 'const LSD_STEPS = 1;')
-    s=s.replace('const TEMPERATURE = 0.7;', 'const TEMPERATURE = 0.30;')
-    s=s.replace('const TEMPERATURE = 0.42;', 'const TEMPERATURE = 0.30;')
+    for temp in ('0.7','0.42','0.30'):
+        s=s.replace(f'const TEMPERATURE = {temp};', 'const TEMPERATURE = 0.18;')
     if s!=old:
         p.write_text(s)
         changed.append(str(p))
