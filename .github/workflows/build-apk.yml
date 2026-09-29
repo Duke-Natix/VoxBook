@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v091]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v092]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,8 +39,11 @@ jobs:
       - name: Prepare VoxBook 0.9 native seamless audio
         run: python tools/prepare_v090.py
 
-      - name: Prepare VoxBook 0.9.1 stable update track
+      - name: Prepare VoxBook 0.9.1 migration version
         run: python tools/prepare_v091.py
+
+      - name: Prepare VoxBook 0.9.2 persistent signing baseline
+        run: python tools/prepare_v092.py
 
       - name: Install web dependencies
         working-directory: web
@@ -69,24 +72,43 @@ jobs:
           gradle-version: '8.13'
 
       - name: Restore stable VoxBook Android signing key
+        id: signing-cache
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: voxbook-android-signing-v1
+          path: ~/.voxbook-signing/voxbook.keystore
+          key: voxbook-android-signing-v2
 
-      - name: Build installable debug APK
+      - name: Create stable signing key on first build
+        run: |
+          mkdir -p "$HOME/.voxbook-signing"
+          if [ ! -f "$HOME/.voxbook-signing/voxbook.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.voxbook-signing/voxbook.keystore" \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=VoxBook Stable,O=VoxBook,C=AT"
+          fi
+          test -s "$HOME/.voxbook-signing/voxbook.keystore"
+          echo "Signing key cache hit: ${{ steps.signing-cache.outputs.cache-hit }}"
+          keytool -list -v -keystore "$HOME/.voxbook-signing/voxbook.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|Valid from:" || true
+
+      - name: Build signed installable APK
         run: gradle --no-daemon assembleDebug
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.9.1.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.9.2.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.9.1-APK
-          path: VoxBook-0.9.1.apk
+          name: VoxBook-0.9.2-APK
+          path: VoxBook-0.9.2.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -94,8 +116,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.9.1 >/dev/null 2>&1; then
-            gh release upload v0.9.1 VoxBook.apk VoxBook-0.9.1.apk --clobber
+          if gh release view v0.9.2 >/dev/null 2>&1; then
+            gh release upload v0.9.2 VoxBook.apk VoxBook-0.9.2.apk --clobber
           else
-            gh release create v0.9.1 VoxBook.apk VoxBook-0.9.1.apk --title "VoxBook 0.9.1 – Stable Update Track" --notes "First VoxBook build on the persistent Android signing track. From this version onward, future APKs built by this workflow keep the same Android signing identity, allowing normal in-place updates. Also includes native AudioTrack playback, continuous AI pre-generation, shorter stable neural utterances and the native APK updater. Users coming from earlier tester builds may need one final uninstall/reinstall because those old builds were signed by ephemeral debug keys."
+            gh release create v0.9.2 VoxBook.apk VoxBook-0.9.2.apk \
+              --title "VoxBook 0.9.2 – Persistent Update Baseline" \
+              --notes "First VoxBook APK explicitly signed with the persistent VoxBook Android signing identity. Users of older tester builds need one final uninstall/reinstall because those APKs used ephemeral runner signatures. From this baseline onward, future VoxBook APKs built with the same signing track can update the installed app in place. Also includes native Android AudioTrack narration, continuous AI look-ahead generation, shorter stable neural utterances, preserved PDF structure, background playback service and the native update downloader/installer."
           fi
