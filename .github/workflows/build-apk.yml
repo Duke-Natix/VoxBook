@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v071]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v080]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,8 +30,11 @@ jobs:
       - name: Prepare VoxBook 0.7 background and UI
         run: python tools/prepare_v070.py
 
-      - name: Prepare VoxBook 0.7.1 seamless narration
+      - name: Prepare VoxBook 0.7.1 narration fixes
         run: python tools/prepare_v071.py
+
+      - name: Prepare VoxBook 0.8 seamless narration
+        run: python tools/prepare_v080.py
 
       - name: Install web dependencies
         working-directory: web
@@ -64,14 +67,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.7.1.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.8.0.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.7.1-APK
-          path: VoxBook-0.7.1.apk
+          name: VoxBook-0.8.0-APK
+          path: VoxBook-0.8.0.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -79,8 +82,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.7.1 >/dev/null 2>&1; then
-            gh release upload v0.7.1 VoxBook.apk VoxBook-0.7.1.apk --clobber
+          if gh release view v0.8.0 >/dev/null 2>&1; then
+            gh release upload v0.8.0 VoxBook.apk VoxBook-0.8.0.apk --clobber
           else
-            gh release create v0.7.1 VoxBook.apk VoxBook-0.7.1.apk --title "VoxBook 0.7.1 – Seamless Narration" --notes "Improves background playback resilience, preserves PDF paragraphs and lists, splits long sentences at natural clause boundaries, starts after a short initial preparation, then continuously generates 20+ seconds ahead while narration is playing. Pocket-TTS is tuned for faster and more deterministic local generation."
+            gh release create v0.8.0 VoxBook.apk VoxBook-0.8.0.apk --title "VoxBook 0.8.0 – Seamless Narration" --notes "Tester build. Hardens Android foreground media playback, preserves PDF paragraphs and lists, splits overly long sentences at natural clause boundaries, and continuously prepares upcoming AI narration while current audio is playing."
           fi
