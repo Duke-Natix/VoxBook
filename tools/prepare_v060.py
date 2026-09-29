@@ -103,13 +103,15 @@ async function aiNarrate(){
   if(S.playing&&tok===S.ai.token)$('engineState').textContent='KI-Erzähler · vollständig vorgeladen';
 }'''
 
-s = re.sub(r"class VoxPassagePlayer\{.*?\nfunction uiAi", new_ai + "\nfunction uiAi", s, flags=re.S)
+s = re.sub(r"class VoxPassagePlayer\{.*?\nfunction uiAi", lambda m: new_ai + "\nfunction uiAi", s, flags=re.S)
 
 # A calm built-in narrator is preferred on first use; the user can still choose
 # any of the other voices or their own cloned voice.
+voice_block = """async function builtVoice(){if(!S.ai.ready)return;let v=S.ai.builtInVoice;if(!v||!S.ai.voices.includes(v)){const preferred=lang()==='de'?['jean','javert','marius','alba']:['marius','jean','alba'];v=preferred.find(x=>S.ai.voices.includes(x))||S.ai.voices[0]||(lang()==='de'?'jean':'alba')}try{S.ai.activeVoice=await S.ai.tts.loadVoice(v);S.ai.builtInVoice=v;localStorage.aiVoice=v}catch(e){console.warn(e);S.ai.activeVoice=null}}
+async function aiNarrate"""
 s = re.sub(
     r"async function builtVoice\(\)\{.*?\}\nasync function aiNarrate",
-    """async function builtVoice(){if(!S.ai.ready)return;let v=S.ai.builtInVoice;if(!v||!S.ai.voices.includes(v)){const preferred=lang()==='de'?['jean','javert','marius','alba']:['marius','jean','alba'];v=preferred.find(x=>S.ai.voices.includes(x))||S.ai.voices[0]||(lang()==='de'?'jean':'alba')}try{S.ai.activeVoice=await S.ai.tts.loadVoice(v);S.ai.builtInVoice=v;localStorage.aiVoice=v}catch(e){console.warn(e);S.ai.activeVoice=null}}\nasync function aiNarrate""",
+    lambda m: voice_block,
     s,
     flags=re.S,
 )
