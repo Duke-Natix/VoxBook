@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v042]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v050]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,14 +21,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare VoxBook 0.4.2 continuous audiobook engine
-        working-directory: web
+      - name: Prepare VoxBook 0.5 audiobook UI and engine
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
 
-          p=Path('src/main.js')
+          # ---------- Web UI / audiobook engine ----------
+          p=Path('web/src/main.js')
           s=p.read_text()
 
           if "./narration.js" not in s:
@@ -38,6 +38,7 @@ jobs:
               )
 
           s=s.replace("l==='de'?'german':'english'", "l==='de'?'german':'english_2026-04'")
+          s=s.replace("voiceCloning:true,maxThreads:4", "voiceCloning:true,maxThreads:8")
           s=re.sub(
               r"function segments\(text\)\{.*?\}\nfunction lang",
               "function segments(text){return buildNarrationSegments(text,S.detected,{paragraphPauses:S.paragraphPauses,dialogueMode:S.dialogueMode})}\nfunction lang",
@@ -45,38 +46,55 @@ jobs:
               flags=re.S
           )
 
-          # One passage is passed to StreamingPlayer as ONE PCM buffer. Pocket-TTS may
-          # generate dozens of tiny chunks, but the listener never hears chunk borders.
-          # While passage N is playing, passage N+1 is generated in the worker.
-          new_ai=r'''function joinPcmChunks(chunks){
-            let total=0;
-            for(const c of chunks) total+=c.length;
-            const pcm=new Float32Array(total);
-            let offset=0;
-            for(const c of chunks){pcm.set(c,offset);offset+=c.length}
+          # Hamburger button in header + side drawer. Bottom nav remains in DOM for
+          # compatibility with old event wiring, but CSS hides it in v0.5.
+          s=s.replace(
+              '<header class="topbar"><div class="brand">',
+              '<header class="topbar"><button class="menu-btn" id="menuBtn" aria-label="Menü öffnen">☰</button><div class="brand">'
+          )
+          s=s.replace(
+              '</nav><div class="toast" id="toast"></div>`;',
+              '''</nav><div class="menu-scrim" id="menuScrim"></div><aside class="drawer" id="drawer" aria-hidden="true"><div class="drawer-head"><div class="drawer-logo">V</div><div><strong>VoxBook</strong><small>Hörbuch-Reader</small></div><button class="drawer-close" id="drawerClose" aria-label="Menü schließen">×</button></div><button class="drawer-link active" data-tab="library"><span>▤</span><div><b>Bibliothek</b><small>Bücher öffnen und fortsetzen</small></div></button><button class="drawer-link" data-tab="player"><span>▶</span><div><b>Player</b><small>Vorlesen und navigieren</small></div></button><button class="drawer-link" data-tab="voices"><span>◉</span><div><b>Stimmen</b><small>KI, eigene Stimme und Android</small></div></button><button class="drawer-link" data-tab="settings"><span>⚙</span><div><b>Einstellungen</b><small>Hörbuchstil und Wiedergabe</small></div></button><div class="drawer-foot">VoxBook 0.5 · Deutsch & English</div></aside><div class="toast" id="toast"></div>`;'''
+          )
+
+          old_tab="function tab(t){S.tab=t;document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.dataset.view===t));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t))}"
+          new_tab="function tab(t){S.tab=t;document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.dataset.view===t));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));document.querySelectorAll('.drawer-link').forEach(b=>b.classList.toggle('active',b.dataset.tab===t))}"
+          s=s.replace(old_tab,new_tab)
+
+          marker="document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));$('openDoc').onclick=()=>Android.openDocument();"
+          drawer_js="""document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+function drawer(open){const d=$('drawer'),m=$('menuScrim');if(!d||!m)return;d.classList.toggle('open',open);m.classList.toggle('open',open);d.setAttribute('aria-hidden',open?'false':'true');document.body.classList.toggle('drawer-open',open)}
+$('menuBtn').onclick=()=>drawer(true);$('drawerClose').onclick=()=>drawer(false);$('menuScrim').onclick=()=>drawer(false);document.querySelectorAll('.drawer-link').forEach(b=>b.onclick=()=>{tab(b.dataset.tab);drawer(false)});
+$('openDoc').onclick=()=>Android.openDocument();"""
+          s=s.replace(marker,drawer_js)
+
+          # A passage is generated as one PCM block, so a model chunk can never cut
+          # a word. We prebuffer several completed passages, then synthesize ahead.
+          # There is deliberately NO speed timeout and NO automatic system-TTS fallback.
+          new_ai=r'''class VoxPassagePlayer{
+            constructor(sampleRate){this.sampleRate=sampleRate||24000;this.ctx=null;this.gain=null;this.sources=new Set();this.nextStart=0}
+            ensure(){if(!this.ctx){const C=globalThis.AudioContext||globalThis.webkitAudioContext;this.ctx=new C({sampleRate:this.sampleRate})}if(!this.gain){this.gain=this.ctx.createGain();this.gain.connect(this.ctx.destination)}}
+            async resume(){this.ensure();if(this.ctx.state==='suspended')await this.ctx.resume()}
+            reset(){this.stop();this.ensure();this.nextStart=this.ctx.currentTime+.08}
+            queue(pcm,onEnded){this.ensure();const b=this.ctx.createBuffer(1,pcm.length,this.sampleRate);b.copyToChannel(pcm,0);const src=this.ctx.createBufferSource();src.buffer=b;src.connect(this.gain);const start=Math.max(this.ctx.currentTime+.06,this.nextStart||0);src.__voxStopped=false;src.start(start);this.nextStart=start+b.duration;this.sources.add(src);src.onended=()=>{this.sources.delete(src);if(!src.__voxStopped&&onEnded)onEnded()};return b.duration}
+            bufferedSeconds(){return this.ctx?Math.max(0,this.nextStart-this.ctx.currentTime):0}
+            stop(){for(const src of this.sources){try{src.__voxStopped=true;src.stop()}catch{}}this.sources.clear();if(this.ctx)this.nextStart=this.ctx.currentTime}
+            async destroy(){this.stop();if(this.ctx){try{await this.ctx.close()}catch{}this.ctx=null;this.gain=null}}
+          }
+
+          function joinPcmChunks(chunks){
+            let total=0;for(const c of chunks)total+=c.length;
+            const pcm=new Float32Array(total);let off=0;
+            for(const c of chunks){pcm.set(c,off);off+=c.length}
             return pcm
           }
 
-          async function generateWholePassage(text,voice,timeoutMs=30000){
+          async function generateWholePassage(text,voice){
             const chunks=[];
-            let timer;
-            try{
-              await Promise.race([
-                S.ai.tts.generate(text,{
-                  voice,
-                  onChunk:(audio)=>{
-                    if(audio?.length) chunks.push(new Float32Array(audio));
-                  }
-                }),
-                new Promise((_,reject)=>{
-                  timer=setTimeout(()=>reject(new Error('VOXBOOK_PASSAGE_TIMEOUT')),timeoutMs);
-                })
-              ]);
-            }finally{
-              clearTimeout(timer);
-            }
-            if(!chunks.length) throw new Error('VOXBOOK_NO_AUDIO');
-            return joinPcmChunks(chunks)
+            const metrics=await S.ai.tts.generate(text,{voice,onChunk:(audio)=>{if(audio?.length)chunks.push(new Float32Array(audio))}});
+            if(!chunks.length)throw new Error('VOXBOOK_NO_AUDIO');
+            const pcm=joinPcmChunks(chunks);
+            return {pcm,metrics:metrics||{},duration:(metrics?.audioDuration||pcm.length/S.ai.tts.sampleRate)}
           }
 
           async function aiNarrate(){
@@ -87,61 +105,118 @@ jobs:
             if(!S.ai.useOwnVoice&&!S.ai.activeVoice)await builtVoice();
             if(!S.ai.activeVoice){toast('Keine KI-Stimme verfügbar.');S.playing=false;refreshPlayer();return}
 
-            const fallbackToSystem=()=>{
-              if(!S.playing||tok!==S.ai.token)return;
-              ++S.ai.token;
-              try{S.ai.tts?.stop?.()}catch{}
-              S.mode='system';
-              localStorage.voiceMode='system';
-              $('engineState').textContent='Systemstimme übernimmt';
-              refreshPlayer();
-              toast('KI ist auf diesem Gerät zu langsam – Systemstimme übernimmt.');
-              systemNarrate();
-            };
+            try{S.ai.player?.reset?.();await S.ai.player?.resume?.()}catch{}
+            let genIndex=S.index;
+            const prepared=[];
+            let preparedSeconds=0;
+            let targetSeconds=7;
+            let firstMetrics=null;
 
-            let first=true;
-            while(S.playing&&tok===S.ai.token&&S.index<S.segments.length){
-              refreshPlayer();
-              $('engineState').textContent=first?'KI bereitet ersten Satz vor …':'Nächste Passage wird vorbereitet …';
-              let pcm;
-              try{
-                pcm=await generateWholePassage(S.segments[S.index],S.ai.activeVoice,30000);
-              }catch(e){
-                console.error(e);
-                if(String(e?.message||e).includes('VOXBOOK_PASSAGE_TIMEOUT')){fallbackToSystem();return}
-                S.playing=false;refreshPlayer();toast('KI-Vorlesen wurde unterbrochen.');return
+            // Initial cushion: enough completed audio that the reader can start smoothly.
+            while(S.playing&&tok===S.ai.token&&genIndex<S.segments.length&&prepared.length<5&&(prepared.length<2||preparedSeconds<targetSeconds)){
+              $('engineState').textContent=prepared.length?`KI bereitet Hörbuch vor · ${Math.round(preparedSeconds)} s Puffer`:'KI bereitet ersten Abschnitt vor …';
+              let rec;
+              try{rec=await generateWholePassage(S.segments[genIndex],S.ai.activeVoice)}catch(e){
+                if(!S.playing||tok!==S.ai.token)return;
+                console.error(e);S.playing=false;refreshPlayer();$('engineState').textContent='KI konnte diesen Abschnitt nicht erzeugen';toast('KI-Fehler. Tippe auf Vorlesen, um es erneut zu versuchen.');return
               }
               if(!S.playing||tok!==S.ai.token)return;
+              prepared.push({index:genIndex,...rec});preparedSeconds+=rec.duration;genIndex++;
+              if(!firstMetrics){
+                firstMetrics=rec.metrics;
+                const speed=Number(firstMetrics?.rtfx||0);
+                if(speed>0&&speed<1)targetSeconds=Math.min(24,Math.max(9,8/speed));
+              }
+            }
+            if(!prepared.length){S.playing=false;refreshPlayer();return}
 
-              // One continuous AudioBuffer per passage. No model chunk can cut a word.
-              const isLast=S.index===S.segments.length-1;
-              S.ai.player.play(pcm,{isLast});
-              $('engineState').textContent=S.ai.useOwnVoice?'Meine Stimme · spielt flüssig':'KI-Erzähler · spielt flüssig';
-              first=false;
-              S.index++;
-              refreshPlayer();
-              // No await here: AudioContext is already playing this complete passage;
-              // the worker can synthesize the next passage at the same time.
+            const schedule=(rec)=>{
+              const isLast=rec.index===S.segments.length-1;
+              S.ai.player.queue(rec.pcm,()=>{
+                if(!S.playing||tok!==S.ai.token)return;
+                S.index=Math.min(rec.index+1,S.segments.length-1);refreshPlayer();
+                if(isLast){$('engineState').textContent='Hörbuch beendet';finish()}
+              });
+            };
+            prepared.forEach(schedule);
+            $('engineState').textContent=(globalThis.crossOriginIsolated?'KI-Erzähler · beschleunigt · ':'KI-Erzähler · ')+`${Math.round(S.ai.player.bufferedSeconds())} s Puffer`;
+
+            // Keep producing whole passages ahead of the playback clock. If the model is
+            // slower than real time, any unavoidable wait can only happen BETWEEN
+            // passages – never inside a word.
+            while(S.playing&&tok===S.ai.token&&genIndex<S.segments.length){
+              const ahead=S.ai.player.bufferedSeconds();
+              $('engineState').textContent=ahead<2?'KI berechnet nächste Passage …':(globalThis.crossOriginIsolated?'KI-Erzähler · beschleunigt · ':'KI-Erzähler · ')+`${Math.round(ahead)} s Puffer`;
+              let rec;
+              try{rec=await generateWholePassage(S.segments[genIndex],S.ai.activeVoice)}catch(e){
+                if(!S.playing||tok!==S.ai.token)return;
+                console.error(e);S.playing=false;refreshPlayer();$('engineState').textContent='KI pausiert wegen eines Fehlers';toast('KI-Fehler. Deine Leseposition bleibt gespeichert.');return
+              }
+              if(!S.playing||tok!==S.ai.token)return;
+              schedule({index:genIndex,...rec});genIndex++;
             }
-            try{S.ai.player?.flush?.()}catch{}
-            if(S.index>=S.segments.length){
-              $('engineState').textContent='Letzte Passage läuft …';
-              S.playing=false;
-              refreshPlayer();
-            }
+            if(S.playing&&tok===S.ai.token)$('engineState').textContent='KI-Erzähler · vollständig vorgeladen';
           }'''
 
           s=re.sub(r"async function aiNarrate\(\)\{.*?\}\nfunction uiAi", new_ai+"\nfunction uiAi", s, flags=re.S)
-
-          # Since each passage is already one continuous PCM buffer, no extra jitter
-          # priming is required. A tiny scheduling lead prevents clock-edge clicks.
-          s=s.replace(
-              "new StreamingPlayer({sampleRate:S.ai.tts.sampleRate})",
-              "new StreamingPlayer({sampleRate:S.ai.tts.sampleRate,primeSeconds:0,leadSeconds:0.08})"
-          )
+          s=s.replace("new StreamingPlayer({sampleRate:S.ai.tts.sampleRate})", "new VoxPassagePlayer(S.ai.tts.sampleRate)")
 
           p.write_text(s)
+
+          # Shorter semantic passages make first speech much faster while still never
+          # splitting a sentence just to satisfy a character limit.
+          n=Path('web/src/narration.js')
+          ns=n.read_text()
+          ns=ns.replace('const target=520, max=720, min=220;','const target=210, max=320, min=90;')
+          n.write_text(ns)
+
+          # ---------- Cleaner hamburger-menu UI ----------
+          css=Path('web/src/style.css')
+          c=css.read_text()
+          c += r'''
+/* VoxBook 0.5 compact drawer navigation */
+.shell{padding-bottom:calc(28px + env(safe-area-inset-bottom));max-width:720px}.topbar{position:sticky;top:0;z-index:18;padding:8px 0 12px;background:linear-gradient(180deg,rgba(7,17,31,.98) 70%,rgba(7,17,31,0));backdrop-filter:blur(8px)}.menu-btn{width:46px;height:46px;flex:none;border:1px solid var(--line);border-radius:15px;background:rgba(20,39,64,.92);color:#eef5ff;font-size:24px;line-height:1;box-shadow:0 8px 24px rgba(0,0,0,.2)}.brand{flex:1;min-width:0}.brand small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.badge{margin-left:auto}.nav{display:none!important}.card{padding:16px;border-radius:20px;margin:10px 0}.now{max-height:132px}.toast{bottom:calc(24px + env(safe-area-inset-bottom))}.menu-scrim{position:fixed;inset:0;z-index:60;background:rgba(0,7,17,.62);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:.22s}.menu-scrim.open{opacity:1;pointer-events:auto}.drawer{position:fixed;z-index:61;left:0;top:0;bottom:0;width:min(86vw,350px);padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));background:linear-gradient(180deg,#0b1a2d,#091524);border-right:1px solid var(--line);box-shadow:18px 0 55px rgba(0,0,0,.45);transform:translateX(-105%);transition:transform .24s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;gap:8px}.drawer.open{transform:none}.drawer-head{display:flex;align-items:center;gap:11px;padding:4px 5px 16px;margin-bottom:4px;border-bottom:1px solid var(--line)}.drawer-head>div:nth-child(2){flex:1}.drawer-head strong{display:block;font-size:19px}.drawer-head small{display:block;color:var(--muted);margin-top:2px}.drawer-logo{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-weight:800;background:linear-gradient(145deg,#2e66b7,#684ca5)}.drawer-close{width:40px;height:40px;border:0;border-radius:13px;background:rgba(255,255,255,.055);color:#dce9fa;font-size:27px}.drawer-link{width:100%;border:1px solid transparent;border-radius:17px;background:transparent;color:#d8e5f5;padding:13px 12px;display:grid;grid-template-columns:36px 1fr;align-items:center;text-align:left;gap:8px}.drawer-link>span{font-size:21px;text-align:center;color:#91bfff}.drawer-link b{display:block;font-size:15px}.drawer-link small{display:block;color:#8195ab;font-size:11px;margin-top:3px}.drawer-link.active{background:rgba(103,151,218,.14);border-color:rgba(133,183,255,.25)}.drawer-foot{margin-top:auto;color:#71859c;font-size:11px;padding:14px 12px}.drawer-open{overflow:hidden}@media(max-width:520px){.shell{padding-left:12px;padding-right:12px}.topbar{gap:9px}.logo{width:39px;height:39px;border-radius:13px}.menu-btn{width:42px;height:42px}.brand h1{font-size:20px}.brand small{font-size:12px}.transport{gap:7px}.transport button{padding:11px 8px}.card-title{align-items:flex-start}.card-title span{max-width:45%;text-align:right}}
+'''
+          css.write_text(c)
+
+          # ---------- Native WebView performance ----------
+          j=Path('app/src/main/java/com/varoxan/voxbook/MainActivity.java')
+          js=j.read_text()
+          js=js.replace('import androidx.webkit.WebViewAssetLoader;', 'import androidx.webkit.WebViewAssetLoader;\nimport androidx.webkit.WebViewCompat;\nimport androidx.webkit.WebViewFeature;\nimport androidx.webkit.Profile;')
+          js=js.replace('import java.util.Comparator;', 'import java.util.Comparator;\nimport java.util.Collections;\nimport java.util.HashMap;\nimport java.util.Map;')
+          js=js.replace('webView = new WebView(this);\n        webView.setBackgroundColor', '''webView = new WebView(this);
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) &&
+                    WebViewFeature.isFeatureSupported(WebViewFeature.CROSS_ORIGIN_ISOLATED_ALLOWLIST)) {
+                Profile profile = WebViewCompat.getProfile(webView);
+                profile.setCrossOriginIsolatedAllowlist(Collections.singleton("https://appassets.androidplatform.net"));
+            }
+        } catch (Throwable ignored) { }
+        webView.setBackgroundColor''')
+          js=js.replace('return assetLoader.shouldInterceptRequest(request.getUrl());', '''WebResourceResponse response = assetLoader.shouldInterceptRequest(request.getUrl());
+                if (response != null && "appassets.androidplatform.net".equals(request.getUrl().getHost())) {
+                    try {
+                        Map<String, String> headers = response.getResponseHeaders();
+                        Map<String, String> updated = headers == null ? new HashMap<>() : new HashMap<>(headers);
+                        updated.put("Document-Isolation-Policy", "isolate-and-credentialless");
+                        response.setResponseHeaders(updated);
+                    } catch (Throwable ignored) { }
+                }
+                return response;''')
+          js=js.replace('public String appVersion() { return "0.2.0"; }','public String appVersion() { return "0.5.0"; }')
+          j.write_text(js)
+
+          g=Path('app/build.gradle.kts')
+          gs=g.read_text()
+          gs=re.sub(r'versionCode = \d+', 'versionCode = 7', gs)
+          gs=re.sub(r'versionName = "[^"]+"', 'versionName = "0.5.0"', gs)
+          gs=gs.replace('androidx.webkit:webkit:1.12.1','androidx.webkit:webkit:1.18.0-alpha02')
+          g.write_text(gs)
           PY
+
+      - name: Build web bundle
+        working-directory: web
+        run: |
           npm install --no-audit --no-fund
           npm run build
           rm -rf ../app/src/main/assets/vox
@@ -163,12 +238,12 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.4.2.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.5.0.apk
 
       - name: Upload VoxBook APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.4.2-APK
-          path: VoxBook-0.4.2.apk
+          name: VoxBook-0.5.0-APK
+          path: VoxBook-0.5.0.apk
           if-no-files-found: error
           retention-days: 30
