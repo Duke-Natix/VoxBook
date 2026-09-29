@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v04]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v041]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prepare VoxBook 0.4 audiobook engine
+      - name: Prepare VoxBook 0.4.1 streaming audiobook engine
         working-directory: web
         run: |
           python - <<'PY'
@@ -40,22 +40,64 @@ jobs:
             if(S.ai.useOwnVoice&&!S.ai.activeVoice){if(!await ownVoice()){S.playing=false;refreshPlayer();tab('voices');return}}
             if(!S.ai.useOwnVoice&&!S.ai.activeVoice)await builtVoice();
             if(!S.ai.activeVoice){toast('Keine KI-Stimme verfügbar.');S.playing=false;refreshPlayer();return}
-            let first=true;
+
+            const fallbackToSystem=()=>{
+              if(!S.playing||tok!==S.ai.token)return;
+              ++S.ai.token;
+              try{S.ai.tts?.stop?.()}catch{}
+              S.mode='system';
+              localStorage.voiceMode='system';
+              $('engineState').textContent='Systemstimme übernimmt';
+              refreshPlayer();
+              toast('KI reagiert zu langsam – Systemstimme übernimmt.');
+              systemNarrate();
+            };
+
             while(S.playing&&tok===S.ai.token&&S.index<S.segments.length){
               refreshPlayer();
-              $('engineState').textContent=first?'KI puffert für flüssiges Vorlesen …':(S.ai.useOwnVoice?'Meine Stimme · flüssig':'KI-Erzähler · flüssig');
-              const packet=[];
+              $('engineState').textContent='KI startet …';
+              let firstChunk=false;
+              let timeoutId;
               try{
-                await S.ai.tts.generate(S.segments[S.index],{
-                  voice:S.ai.activeVoice,
-                  onChunk:(audio,meta)=>packet.push({audio:new Float32Array(audio),meta})
+                await new Promise((resolve,reject)=>{
+                  let settled=false;
+                  timeoutId=setTimeout(()=>{
+                    if(settled||firstChunk)return;
+                    settled=true;
+                    try{S.ai.tts?.stop?.()}catch{}
+                    reject(new Error('VOXBOOK_TTS_START_TIMEOUT'));
+                  },12000);
+                  Promise.resolve(S.ai.tts.generate(S.segments[S.index],{
+                    voice:S.ai.activeVoice,
+                    onChunk:(audio,meta)=>{
+                      if(!S.playing||tok!==S.ai.token)return;
+                      if(!firstChunk){
+                        firstChunk=true;
+                        clearTimeout(timeoutId);
+                        $('engineState').textContent=S.ai.useOwnVoice?'Meine Stimme · spielt':'KI-Erzähler · spielt';
+                      }
+                      S.ai.player.play(audio,meta);
+                    }
+                  })).then(()=>{
+                    if(settled)return;
+                    settled=true;
+                    clearTimeout(timeoutId);
+                    resolve();
+                  }).catch(e=>{
+                    if(settled)return;
+                    settled=true;
+                    clearTimeout(timeoutId);
+                    reject(e);
+                  });
                 });
               }catch(e){
-                console.error(e);S.playing=false;refreshPlayer();toast('KI-Vorlesen wurde unterbrochen.');return
+                console.error(e);
+                clearTimeout(timeoutId);
+                if(String(e?.message||e).includes('VOXBOOK_TTS_START_TIMEOUT')){fallbackToSystem();return}
+                S.playing=false;refreshPlayer();toast('KI-Vorlesen wurde unterbrochen.');return
               }
               if(!S.playing||tok!==S.ai.token)return;
-              for(const c of packet) S.ai.player.play(c.audio,c.meta);
-              first=false;
+              if(!firstChunk){fallbackToSystem();return}
               S.index++;
               refreshPlayer();
             }
@@ -86,12 +128,12 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.4.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.4.1.apk
 
       - name: Upload VoxBook APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.4-APK
-          path: VoxBook-0.4.apk
+          name: VoxBook-0.4.1-APK
+          path: VoxBook-0.4.1.apk
           if-no-files-found: error
           retention-days: 30
