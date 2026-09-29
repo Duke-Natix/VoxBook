@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v090]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v091]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,6 +39,9 @@ jobs:
       - name: Prepare VoxBook 0.9 native seamless audio
         run: python tools/prepare_v090.py
 
+      - name: Prepare VoxBook 0.9.1 stable update track
+        run: python tools/prepare_v091.py
+
       - name: Install web dependencies
         working-directory: web
         run: npm install --no-audit --no-fund
@@ -65,19 +68,25 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Restore stable VoxBook Android signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: voxbook-android-signing-v1
+
       - name: Build installable debug APK
         run: gradle --no-daemon assembleDebug
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.9.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-0.9.1.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-0.9.0-APK
-          path: VoxBook-0.9.0.apk
+          name: VoxBook-0.9.1-APK
+          path: VoxBook-0.9.1.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -85,8 +94,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.9.0 >/dev/null 2>&1; then
-            gh release upload v0.9.0 VoxBook.apk VoxBook-0.9.0.apk --clobber
+          if gh release view v0.9.1 >/dev/null 2>&1; then
+            gh release upload v0.9.1 VoxBook.apk VoxBook-0.9.1.apk --clobber
           else
-            gh release create v0.9.0 VoxBook.apk VoxBook-0.9.0.apk --title "VoxBook 0.9.0 – Native Seamless Audio" --notes "Moves AI audio playback into a native Android AudioTrack foreground service for gapless background playback, keeps generation running ahead while narration is playing, shortens neural utterances to reduce warble, preserves PDF structure, and adds a native APK update downloader/installer. Android still requires the user to approve APK installation."
+            gh release create v0.9.1 VoxBook.apk VoxBook-0.9.1.apk --title "VoxBook 0.9.1 – Stable Update Track" --notes "First VoxBook build on the persistent Android signing track. From this version onward, future APKs built by this workflow keep the same Android signing identity, allowing normal in-place updates. Also includes native AudioTrack playback, continuous AI pre-generation, shorter stable neural utterances and the native APK updater. Users coming from earlier tester builds may need one final uninstall/reinstall because those old builds were signed by ephemeral debug keys."
           fi
