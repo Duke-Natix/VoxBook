@@ -1,0 +1,15 @@
+{
+  "name": "voxbook-ui",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "pocket-tts-js": "latest"
+  },
+  "devDependencies": {
+    "vite": "latest"
+  }
+}
