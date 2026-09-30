@@ -39,9 +39,6 @@ new_ai = r'''async function aiNarrate(){
   let deliveredChunks=0;
   $('engineState').textContent='Erzähler bereitet kurz vor …';
 
-  // The worker owns the complete remaining queue. Chunk callbacks only bridge
-  // ready-made PCM into Android's foreground AudioTrack; no sentence scheduling
-  // happens on the WebView thread anymore.
   const generationPromise=S.ai.tts.generateQueue(items,{
     voice:S.ai.activeVoice,
     onChunk:(audio,meta)=>{
@@ -113,26 +110,24 @@ s = s.replace('VoxBook 1.2.0 · Deutsch & English', 'VoxBook 1.2.1 · Deutsch & 
 s = s.replace('id="updateVersion">v1.2.0', 'id="updateVersion">v1.2.1')
 p.write_text(s)
 
-# Keep the WebView/worker event bridge alive from the existing foreground media
-# service. This is intentionally non-recursive: it never starts the service and
-# only resumes the already alive renderer so worker postMessage events can be
-# forwarded to Android while minimized.
 svc = Path('app/src/main/java/com/varoxan/voxbook/PlaybackService.java')
 ss = svc.read_text()
-needle = '''        @Override public void run() {
-            if (!running) return;
-
-            if (webKeepAliveHandler != null) webKeepAliveHandler.postDelayed(this, 1200);
-        }'''
-replacement = '''        @Override public void run() {
-            if (!running) return;
-            try { MainActivity.pumpBackgroundWebRuntime(); } catch (Throwable ignored) { }
-            if (webKeepAliveHandler != null) webKeepAliveHandler.postDelayed(this, 1500);
-        }'''
-if needle in ss:
-    ss = ss.replace(needle, replacement, 1)
-elif 'MainActivity.pumpBackgroundWebRuntime();' not in ss:
-    raise SystemExit('Could not restore safe background renderer heartbeat')
+heartbeat_line = 'if (webKeepAliveHandler != null) webKeepAliveHandler.postDelayed(this, 1200);'
+if heartbeat_line in ss:
+    ss = ss.replace(
+        heartbeat_line,
+        'try { MainActivity.pumpBackgroundWebRuntime(); } catch (Throwable ignored) { }\n            if (webKeepAliveHandler != null) webKeepAliveHandler.postDelayed(this, 1500);',
+        1,
+    )
+elif 'webKeepAliveHandler.postDelayed(this, 1500);' in ss:
+    if 'MainActivity.pumpBackgroundWebRuntime();' not in ss:
+        ss = ss.replace(
+            'if (webKeepAliveHandler != null) webKeepAliveHandler.postDelayed(this, 1500);',
+            'try { MainActivity.pumpBackgroundWebRuntime(); } catch (Throwable ignored) { }\n            if (webKeepAliveHandler != null) webKeepAliveHandler.postDelayed(this, 1500);',
+            1,
+        )
+else:
+    raise SystemExit('Could not locate background heartbeat delay')
 svc.write_text(ss)
 
 j = Path('app/src/main/java/com/varoxan/voxbook/MainActivity.java')
