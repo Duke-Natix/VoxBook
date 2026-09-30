@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v116]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v120]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -53,6 +53,8 @@ jobs:
         run: python tools/prepare_v115.py
       - name: Prepare VoxBook 1.1.6 background recursion hotfix
         run: python tools/prepare_v116.py
+      - name: Prepare VoxBook 1.2 worker-owned background narration
+        run: python tools/prepare_v120.py
 
       - name: Verify unsafe PDF regex is gone
         run: |
@@ -73,7 +75,7 @@ jobs:
         working-directory: web
         run: npm install --no-audit --no-fund
 
-      - name: Keep Pocket-TTS at upstream voice-quality defaults
+      - name: Patch Pocket-TTS for VoxBook background worker
         run: python tools/tune_pocket_tts.py
 
       - name: Build web bundle
@@ -123,14 +125,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.6.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.2.0.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.1.6-APK
-          path: VoxBook-1.1.6.apk
+          name: VoxBook-1.2.0-APK
+          path: VoxBook-1.2.0.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -138,10 +140,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.1.6 >/dev/null 2>&1; then
-            gh release upload v1.1.6 VoxBook.apk VoxBook-1.1.6.apk --clobber
+          if gh release view v1.2.0 >/dev/null 2>&1; then
+            gh release upload v1.2.0 VoxBook.apk VoxBook-1.2.0.apk --clobber
           else
-            gh release create v1.1.6 VoxBook.apk VoxBook-1.1.6.apk \
-              --title "VoxBook 1.1.6 – Background Playback Hotfix" \
-              --notes "Fixes a 1.1.5 feedback loop where the native background heartbeat restarted the same foreground service through JavaScript, which could overload the Android UI thread and leave VoxBook stuck on its launch splash. Background playback keepalive is now non-recursive and less aggressive."
+            gh release create v1.2.0 VoxBook.apk VoxBook-1.2.0.apk \
+              --title "VoxBook 1.2.0 – True Background Narration" \
+              --notes "Moves sentence-to-sentence narration ownership into Pocket-TTS's dedicated Web Worker and streams worker PCM directly into Android's native foreground AudioTrack through a same-origin native sink. The minimized app no longer depends on the throttled WebView UI thread to request the next sentence or forward audio. Keeps persistent PDFs, collection, adaptive colours, voice cloning and media controls."
           fi
