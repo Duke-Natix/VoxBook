@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v130]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v131]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,6 +59,8 @@ jobs:
         run: python tools/prepare_v121.py
       - name: Prepare VoxBook 1.3 native background narration
         run: python tools/prepare_v130.py
+      - name: Prepare VoxBook 1.3.1 voice quality stabilization
+        run: python tools/prepare_v131.py
 
       - name: Verify unsafe PDF regex is gone
         run: |
@@ -105,9 +107,9 @@ jobs:
 
       - name: Prepare native Pocket-TTS runtime
         run: |
-          rm -rf /tmp/voxbook-pocket-native
+          rm -rf /tmp/voxbook-pocket-native /tmp/voxbook-thorsten
           git clone --depth 1 --branch v0.5.2 https://github.com/The-unknown-Shadowman/PocketTTS-Android-Engine.git /tmp/voxbook-pocket-native
-          mkdir -p vendor/PocketTTS.cpp app/src/main/cpp app/src/main/assets/licenses app/src/main/jniLibs/arm64-v8a app/src/main/third_party
+          mkdir -p vendor/PocketTTS.cpp app/src/main/cpp app/src/main/assets/licenses app/src/main/assets/voices app/src/main/jniLibs/arm64-v8a app/src/main/third_party /tmp/voxbook-thorsten
           cp /tmp/voxbook-pocket-native/vendor/PocketTTS.cpp/pocket_tts.cpp vendor/PocketTTS.cpp/pocket_tts.cpp
           cp /tmp/voxbook-pocket-native/app/src/main/cpp/CMakeLists.txt app/src/main/cpp/CMakeLists.txt
           cp /tmp/voxbook-pocket-native/app/src/main/cpp/jni_bridge.cpp app/src/main/cpp/jni_bridge.cpp
@@ -119,8 +121,22 @@ jobs:
           cp /tmp/voxbook-pocket-native/LICENSE app/src/main/assets/licenses/PocketTTS-Android-Engine-LICENSE.txt
           cp /tmp/voxbook-pocket-native/THIRD_PARTY_NOTICES.md app/src/main/assets/licenses/PocketTTS-Android-Engine-THIRD-PARTY.md
           cp /tmp/voxbook-pocket-native/MODEL_LICENSE.md app/src/main/assets/licenses/PocketTTS-MODEL-LICENSE.md
+
+          # Clean CC0 German narrator reference. PocketTTS Android's own docs
+          # note that a clean Thorsten-Voice excerpt produced fewer artifacts
+          # than its bundled Jürgen reference in a local German comparison.
+          THORSTEN_REF="29d0c153c55d8ffaa0ebf8ed1ecc879bff9fdf27"
+          for n in 01 02 03 04; do
+            curl -fL "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/${THORSTEN_REF}/docs/samples/sample${n}-gt.wav" -o "/tmp/voxbook-thorsten/sample${n}.wav"
+          done
+          printf "file '/tmp/voxbook-thorsten/sample01.wav'\nfile '/tmp/voxbook-thorsten/sample02.wav'\nfile '/tmp/voxbook-thorsten/sample03.wav'\nfile '/tmp/voxbook-thorsten/sample04.wav'\n" > /tmp/voxbook-thorsten/list.txt
+          ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i /tmp/voxbook-thorsten/list.txt -ar 24000 -ac 1 -c:a pcm_s16le app/src/main/assets/voices/thorsten-cc0.wav
+          curl -fL "https://raw.githubusercontent.com/thorstenMueller/Thorsten-Voice/${THORSTEN_REF}/LICENSE" -o app/src/main/assets/licenses/Thorsten-Voice-CC0.txt
+
           test -s vendor/PocketTTS.cpp/pocket_tts.cpp
           test -s app/src/main/jniLibs/arm64-v8a/libonnxruntime.so
+          test -s app/src/main/assets/voices/thorsten-cc0.wav
+          test -s app/src/main/assets/licenses/Thorsten-Voice-CC0.txt
 
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
@@ -155,14 +171,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.3.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.3.1.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.3.0-APK
-          path: VoxBook-1.3.0.apk
+          name: VoxBook-1.3.1-APK
+          path: VoxBook-1.3.1.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -170,10 +186,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.3.0 >/dev/null 2>&1; then
-            gh release upload v1.3.0 VoxBook.apk VoxBook-1.3.0.apk --clobber
+          if gh release view v1.3.1 >/dev/null 2>&1; then
+            gh release upload v1.3.1 VoxBook.apk VoxBook-1.3.1.apk --clobber
           else
-            gh release create v1.3.0 VoxBook.apk VoxBook-1.3.0.apk \
-              --title "VoxBook 1.3.0 – Native Background Narrator" \
-              --notes "Moves Pocket-TTS inference out of Chromium/WebView into a real Android foreground service using the native PocketTTS.cpp ONNX runtime. AI narration, sentence-to-sentence generation, buffering and AudioTrack playback can now continue after the app is minimized or the screen is locked. The first use of German or English downloads the trusted native model pack once (about 200 MB per language). Native AI currently targets arm64-v8a Android devices. Keeps PDF rendering, collection, own-voice recording, adaptive themes, updates and media controls."
+            gh release create v1.3.1 VoxBook.apk VoxBook-1.3.1.apk \
+              --title "VoxBook 1.3.1 – Clear Voice Stabilization" \
+              --notes "Voice-quality hotfix for the native background narrator. German narration now uses a clean CC0 Thorsten-Voice reference instead of the rougher bundled reference, reduces sampling randomness, limits generation chunks to reduce metallic/garbled passages, increases the initial audio buffer, and changes own-voice recording to the Pocket-TTS recommended 12–15 second range. Native background playback, PDF reader, collection, themes, updates and media controls remain unchanged."
           fi
