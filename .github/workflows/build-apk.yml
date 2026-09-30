@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v115]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v116]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -51,6 +51,8 @@ jobs:
         run: python tools/prepare_v114.py
       - name: Prepare VoxBook 1.1.5 resilient minimized playback
         run: python tools/prepare_v115.py
+      - name: Prepare VoxBook 1.1.6 background recursion hotfix
+        run: python tools/prepare_v116.py
 
       - name: Verify unsafe PDF regex is gone
         run: |
@@ -121,14 +123,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.5.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.6.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.1.5-APK
-          path: VoxBook-1.1.5.apk
+          name: VoxBook-1.1.6-APK
+          path: VoxBook-1.1.6.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -136,10 +138,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.1.5 >/dev/null 2>&1; then
-            gh release upload v1.1.5 VoxBook.apk VoxBook-1.1.5.apk --clobber
+          if gh release view v1.1.6 >/dev/null 2>&1; then
+            gh release upload v1.1.6 VoxBook.apk VoxBook-1.1.6.apk --clobber
           else
-            gh release create v1.1.5 VoxBook.apk VoxBook-1.1.5.apk \
-              --title "VoxBook 1.1.5 – Resilient Background Playback" \
-              --notes "Strengthens minimized/background playback: the native media foreground service now actively keeps the hidden WebView/Pocket-TTS runtime alive, the reader keeps up to 90 seconds of generated PCM ahead after the short startup buffer, the media notification remains persistent, and the WebView is explicitly resumed while the Activity is hidden. Keeps persistent PDFs, collection, adaptive colours and media controls."
+            gh release create v1.1.6 VoxBook.apk VoxBook-1.1.6.apk \
+              --title "VoxBook 1.1.6 – Background Playback Hotfix" \
+              --notes "Fixes a 1.1.5 feedback loop where the native background heartbeat restarted the same foreground service through JavaScript, which could overload the Android UI thread and leave VoxBook stuck on its launch splash. Background playback keepalive is now non-recursive and less aggressive."
           fi
