@@ -28,3 +28,12 @@ hotfix=Path('tools/prepare_v100_hotfix.py')
 if hotfix.exists():
     code=compile(hotfix.read_text(), str(hotfix), 'exec')
     exec(code, {'__name__':'__main__'})
+
+# VoxBook 1.2 background architecture: the Pocket-TTS worker itself owns the
+# remaining narration queue and streams PCM directly to Android through a
+# same-origin native sink. This avoids WebView main-thread suspension between
+# sentences when the app is minimized.
+bg_patch=Path('tools/patch_pocket_tts_background.py')
+if bg_patch.exists():
+    code=compile(bg_patch.read_text(), str(bg_patch), 'exec')
+    exec(code, {'__name__':'__main__'})
