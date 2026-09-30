@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v114]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-v115]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,6 +49,8 @@ jobs:
         run: python tools/prepare_v113.py
       - name: Prepare VoxBook 1.1.4 persistent current document
         run: python tools/prepare_v114.py
+      - name: Prepare VoxBook 1.1.5 resilient minimized playback
+        run: python tools/prepare_v115.py
 
       - name: Verify unsafe PDF regex is gone
         run: |
@@ -119,14 +121,14 @@ jobs:
 
       - name: Prepare APK files
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.4.apk
+          cp app/build/outputs/apk/debug/app-debug.apk VoxBook-1.1.5.apk
           cp app/build/outputs/apk/debug/app-debug.apk VoxBook.apk
 
       - name: Upload VoxBook APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoxBook-1.1.4-APK
-          path: VoxBook-1.1.4.apk
+          name: VoxBook-1.1.5-APK
+          path: VoxBook-1.1.5.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -134,10 +136,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.1.4 >/dev/null 2>&1; then
-            gh release upload v1.1.4 VoxBook.apk VoxBook-1.1.4.apk --clobber
+          if gh release view v1.1.5 >/dev/null 2>&1; then
+            gh release upload v1.1.5 VoxBook.apk VoxBook-1.1.5.apk --clobber
           else
-            gh release create v1.1.4 VoxBook.apk VoxBook-1.1.4.apk \
-              --title "VoxBook 1.1.4 – Persistent Reader State" \
-              --notes "Keeps the currently selected PDF/TXT across rotation, menu changes, background/foreground transitions, Activity recreation and ordinary process restarts. The last successfully opened document URI is persisted and restored automatically, while the active reader menu is remembered. Keeps the PDF hard fix and adaptive story colours."
+            gh release create v1.1.5 VoxBook.apk VoxBook-1.1.5.apk \
+              --title "VoxBook 1.1.5 – Resilient Background Playback" \
+              --notes "Strengthens minimized/background playback: the native media foreground service now actively keeps the hidden WebView/Pocket-TTS runtime alive, the reader keeps up to 90 seconds of generated PCM ahead after the short startup buffer, the media notification remains persistent, and the WebView is explicitly resumed while the Activity is hidden. Keeps persistent PDFs, collection, adaptive colours and media controls."
           fi
