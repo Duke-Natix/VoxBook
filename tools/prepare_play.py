@@ -30,7 +30,10 @@ if 'create("voxStable")' not in gs:
         raise SystemExit('android block missing from app/build.gradle.kts')
     gs = gs.replace(marker, marker + signing, 1)
 
-if 'signingConfig = signingConfigs.getByName("voxStable")' not in gs:
+# Older VoxBook preparation scripts already create voxStable for the APK. Add
+# that same stable identity to release without disturbing the debug signer.
+release_block = '        release {\n'
+if 'signingConfig = signingConfigs.getByName("voxStable")' not in gs.split(release_block, 1)[-1]:
     needle = '        release {\n            isMinifyEnabled = false'
     replacement = '        release {\n            signingConfig = signingConfigs.getByName("voxStable")\n            isDebuggable = false\n            isMinifyEnabled = false'
     if needle not in gs:
@@ -40,10 +43,35 @@ if 'signingConfig = signingConfigs.getByName("voxStable")' not in gs:
 gradle.write_text(gs)
 
 # ---------------------------------------------------------------------------
-# Remove the sideload APK updater from the Play source tree
+# Remove every sideload APK updater path from the Play source tree
 # ---------------------------------------------------------------------------
 activity = Path('app/src/main/java/com/varoxan/voxbook/MainActivity.java')
 js = activity.read_text()
+
+# 0.9.x introduced a DownloadManager receiver. 1.3.3 replaced the active
+# updater with a FileProvider-based downloader, but the old receiver and retry
+# lifecycle hooks remained in MainActivity. They must also disappear from the
+# Play build; removing only startLatestUpdate() is not enough.
+js = js.replace('        registerUpdateReceiver();\n', '')
+js = re.sub(r'^    private long updateDownloadId = -1L;\n', '', js, flags=re.M)
+js = re.sub(r'^    private boolean retryUpdateAfterPermission = false;\n', '', js, flags=re.M)
+js = re.sub(r'^    private BroadcastReceiver updateReceiver;\n', '', js, flags=re.M)
+
+legacy_receiver_pat = re.compile(
+    r'^    private void registerUpdateReceiver\(\) \{.*?(?=^    private void startLatestUpdate\(\))',
+    re.S | re.M,
+)
+js = legacy_receiver_pat.sub('', js, count=1)
+
+# Remove only the legacy retry clause while preserving any other onResume work.
+legacy_retry = '''        if (retryUpdateAfterPermission && (Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls())) {\n            retryUpdateAfterPermission = false;\n            startLatestUpdate();\n        }\n'''
+js = js.replace(legacy_retry, '')
+
+# Remove the corresponding old receiver cleanup while preserving onDestroy.
+js = js.replace(
+    '        if (updateReceiver != null) { try { unregisterReceiver(updateReceiver); } catch (Throwable ignored) { } updateReceiver = null; }\n',
+    '',
+)
 
 # FileProvider is used only by the sideload APK installer.
 js = js.replace('import androidx.core.content.FileProvider;\n', '')
@@ -65,9 +93,8 @@ play_updater = r'''    private void startLatestUpdate() {
     }
 '''
 
-# Replace the complete method, including the debug/sideload branch injected by
-# prepare_v140.py. A four-space closing brace is the method boundary in this
-# source file; nested blocks are indented more deeply.
+# Replace the complete 1.3.x updater, including the debug/sideload branch added
+# for 1.4.0. Nested blocks are indented more deeply than the method boundary.
 updater_pat = re.compile(
     r'^    private void startLatestUpdate\(\) \{.*?^    \}\n',
     re.S | re.M,
@@ -76,14 +103,14 @@ js, count = updater_pat.subn(play_updater, js, count=1)
 if count != 1:
     raise SystemExit('Could not replace startLatestUpdate() for Play build')
 
-# The helper that opens a downloaded APK must not exist in the Play binary.
+# Remove the FileProvider APK installer added in 1.3.3.
 installer_pat = re.compile(
     r'^    private void launchDownloadedUpdate\(java\.io\.File apk\) \{.*?^    \}\n',
     re.S | re.M,
 )
 js = installer_pat.sub('', js, count=1)
 
-# Guard against accidentally shipping self-update/install code in the AAB.
+# Guard against accidentally shipping any active self-update/install path.
 for forbidden in (
     'ACTION_MANAGE_UNKNOWN_APP_SOURCES',
     'canRequestPackageInstalls()',
@@ -91,6 +118,8 @@ for forbidden in (
     'VoxBook-update-',
     'application/vnd.android.package-archive',
     'FileProvider.getUriForFile',
+    'registerUpdateReceiver()',
+    'retryUpdateAfterPermission',
 ):
     if forbidden in js:
         raise SystemExit(f'Forbidden sideload updater marker remains in Play source: {forbidden}')
@@ -119,4 +148,4 @@ release_manifest.write_text('''<?xml version="1.0" encoding="utf-8"?>
 </manifest>
 ''')
 
-print('Google Play source hardened: sideload updater removed; Play-managed updates enabled')
+print('Google Play source hardened: legacy + current sideload updaters removed; Play-managed updates enabled')
