@@ -1,2 +1,3 @@
 Trigger VoxBook 1.4.0 Google Play release build.
 Signing fallback hardened for Play AAB.
+Build mode detection fixed without BuildConfig.
