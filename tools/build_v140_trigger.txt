@@ -1,5 +1,5 @@
 Trigger VoxBook 1.4.0 Google Play release build.
-Signing fallback hardened for Play AAB.
-Build mode detection uses ApplicationInfo.FLAG_DEBUGGABLE inline.
-Legacy 0.9.x and current 1.3.x sideload updater paths removed from Play build.
-PocketTTS JNI now links with 16 KB ELF page alignment for Google Play.
+Self-updater removed from all 1.4.0 builds; Google Play manages updates.
+PocketTTS output now uses peak-safe PCM cleanup and at least 2 decode steps.
+Android Auto media browser and transport controls added.
+PocketTTS JNI links with 16 KB ELF page alignment for Google Play.
