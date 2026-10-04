@@ -18,9 +18,9 @@ if 'create("voxStable")' not in gs:
     signing = '''    signingConfigs {
         create("voxStable") {
             storeFile = file(System.getProperty("user.home") + "/.voxbook-signing/voxbook.keystore")
-            storePassword = System.getenv("VOXBOOK_KEYSTORE_PASSWORD") ?: "android"
-            keyAlias = System.getenv("VOXBOOK_KEY_ALIAS") ?: "androiddebugkey"
-            keyPassword = System.getenv("VOXBOOK_KEY_PASSWORD") ?: storePassword
+            storePassword = System.getenv("VOXBOOK_KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() } ?: "android"
+            keyAlias = System.getenv("VOXBOOK_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "androiddebugkey"
+            keyPassword = System.getenv("VOXBOOK_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: storePassword
         }
     }
 
