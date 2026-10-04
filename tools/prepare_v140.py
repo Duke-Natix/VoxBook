@@ -34,22 +34,23 @@ p.write_text(s)
 j = Path('app/src/main/java/com/varoxan/voxbook/MainActivity.java')
 js = j.read_text()
 
-# Detect whether Android marks this package as debuggable. This avoids relying
-# on generated BuildConfig classes, which may be disabled by newer AGP setups.
-debug_helper_marker = '    private String friendlyVoiceName(String raw) {'
-debug_helper = '''    private boolean isDebugBuild() {\n        return (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;\n    }\n\n'''
-if 'private boolean isDebugBuild()' not in js and debug_helper_marker in js:
-    js = js.replace(debug_helper_marker, debug_helper + debug_helper_marker, 1)
-
-# Expose distribution mode to the Web UI.
+# Expose distribution mode to the Web UI. Do not depend on BuildConfig or on a
+# helper insertion point: ApplicationInfo.FLAG_DEBUGGABLE is always available.
 bridge_marker = '        @JavascriptInterface\n        public String appVersion()'
 if 'public boolean isPlayStoreBuild()' not in js and bridge_marker in js:
-    js = js.replace(bridge_marker, '        @JavascriptInterface\n        public boolean isPlayStoreBuild() { return !isDebugBuild(); }\n\n' + bridge_marker, 1)
+    js = js.replace(
+        bridge_marker,
+        '        @JavascriptInterface\n'
+        '        public boolean isPlayStoreBuild() {\n'
+        '            return (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0;\n'
+        '        }\n\n' + bridge_marker,
+        1,
+    )
 
 # Release builds hand updates to Google Play. Debug/test APKs keep the GitHub
 # updater used by existing testers.
 update_marker = '    private void startLatestUpdate() {\n'
-play_update = '''    private void startLatestUpdate() {\n        if (!isDebugBuild()) {\n            try {\n                Intent store = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + getPackageName()));\n                startActivity(store);\n            } catch (Throwable first) {\n                try {\n                    Intent web = new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + getPackageName()));\n                    startActivity(web);\n                } catch (Throwable ignored) { toast("Google Play konnte nicht geöffnet werden."); }\n            }\n            return;\n        }\n'''
+play_update = '''    private void startLatestUpdate() {\n        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) {\n            try {\n                Intent store = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + getPackageName()));\n                startActivity(store);\n            } catch (Throwable first) {\n                try {\n                    Intent web = new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + getPackageName()));\n                    startActivity(web);\n                } catch (Throwable ignored) { toast("Google Play konnte nicht geöffnet werden."); }\n            }\n            return;\n        }\n'''
 if update_marker in js and 'market://details?id=' not in js:
     js = js.replace(update_marker, play_update, 1)
 
