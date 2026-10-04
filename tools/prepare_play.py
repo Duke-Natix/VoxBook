@@ -43,6 +43,23 @@ if 'signingConfig = signingConfigs.getByName("voxStable")' not in gs.split(relea
 gradle.write_text(gs)
 
 # ---------------------------------------------------------------------------
+# 16 KB native page-size compatibility
+# ---------------------------------------------------------------------------
+# VoxBook currently builds PocketTTS JNI with Android NDK r27. Android's 16 KB
+# guidance requires explicit linker alignment flags for r27 and older. ONNX
+# Runtime is already 16 KB aligned; this makes libpockettts_jni.so match it.
+cmake = Path('app/src/main/cpp/CMakeLists.txt')
+if not cmake.exists():
+    raise SystemExit('PocketTTS CMakeLists.txt missing before Play build')
+cs = cmake.read_text()
+page_size_block = '''\n# VoxBook Google Play: 16 KB ELF page alignment for Android 15+ devices.\ntarget_link_options(pockettts_jni PRIVATE\n    "-Wl,-z,max-page-size=16384"\n    "-Wl,-z,common-page-size=16384")\n'''
+if 'max-page-size=16384' not in cs:
+    if 'add_library(pockettts_jni SHARED' not in cs:
+        raise SystemExit('PocketTTS JNI target missing from CMakeLists.txt')
+    cs += page_size_block
+cmake.write_text(cs)
+
+# ---------------------------------------------------------------------------
 # Remove every sideload APK updater path from the Play source tree
 # ---------------------------------------------------------------------------
 activity = Path('app/src/main/java/com/varoxan/voxbook/MainActivity.java')
@@ -148,4 +165,4 @@ release_manifest.write_text('''<?xml version="1.0" encoding="utf-8"?>
 </manifest>
 ''')
 
-print('Google Play source hardened: legacy + current sideload updaters removed; Play-managed updates enabled')
+print('Google Play source hardened: sideload updaters removed; 16 KB JNI alignment enabled; Play-managed updates enabled')
