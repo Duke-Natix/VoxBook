@@ -19,16 +19,18 @@ VoxBook may store locally:
 - app settings and color preferences;
 - selected narrator voices;
 - recorded voice profiles;
-- downloaded speech-model files.
+- downloaded speech-model files;
+- the current audiobook playback state so supported media surfaces such as Android Auto can resume playback.
 
 This local data can normally be removed by deleting the relevant item inside VoxBook or by clearing/uninstalling the app.
 
 ## Internet access
-VoxBook uses an internet connection for functions such as downloading speech-model files from their distribution source.
+VoxBook uses an internet connection for functions such as downloading speech-model files from their distribution source. VoxBook does not download or install application APK updates itself. Application updates are handled by Google Play.
 
-The Google Play release of VoxBook uses Google Play as its app-update channel. Sideloaded/test builds may additionally check GitHub for VoxBook updates and, only when you explicitly start an in-app update, download a new VoxBook APK from GitHub.
+These model-download requests can expose ordinary technical connection information such as your IP address to the service hosting the requested file, as is normal for internet downloads.
 
-These network requests can expose ordinary technical connection information such as your IP address to the service hosting the requested file, as is normal for internet downloads.
+## Android Auto
+If you use VoxBook with Android Auto, VoxBook exposes basic media metadata and playback controls to the Android Auto host so that the current audiobook can be shown and controlled in the car interface. Document text and recorded voice samples are not sent to a VoxBook server for this feature.
 
 ## Analytics and advertising
 VoxBook does not include its own advertising SDK and does not intentionally collect analytics, behavioral profiles, or advertising identifiers.
@@ -37,13 +39,13 @@ VoxBook does not include its own advertising SDK and does not intentionally coll
 VoxBook does not sell personal data. VoxBook does not intentionally send document contents or saved voice recordings to advertisers or data brokers.
 
 ## Permissions
-VoxBook may request Android permissions needed for its features, including microphone access for voice recording and notification/media permissions for background playback controls. The Google Play release does not request permission to install APK packages from unknown sources.
+VoxBook may request Android permissions needed for its features, including microphone access for voice recording and notification/media permissions for background playback controls. VoxBook does not request permission to install APK packages from unknown sources.
 
 ## Children's privacy
 VoxBook is a general-purpose reading utility and is not specifically directed at children. Users should only process documents and voice recordings they are permitted to use.
 
 ## Third-party components and downloads
-VoxBook uses third-party open-source components and locally executed speech models. Model files may be downloaded from external hosting services such as GitHub. Google Play handles application updates for the Google Play release. Those external services operate under their own privacy policies when handling network requests.
+VoxBook uses third-party open-source components and locally executed speech models. Model files may be downloaded from external hosting services such as GitHub. Google Play handles application updates. Those external services operate under their own privacy policies when handling network requests.
 
 ## Changes
 This policy may be updated when VoxBook's functionality changes. The current version will be published in this repository.
@@ -70,14 +72,15 @@ Wenn du eine PDF- oder Textdatei auswählst, liest VoxBook diese Datei, um sie a
 VoxBook kann das Mikrofon verwenden, wenn du bewusst eine persönliche Sprachprobe aufnimmst. Gespeicherte Stimmprofile verbleiben lokal auf deinem Gerät und werden für die lokale Erzählerstimme genutzt. VoxBook lädt diese Aufnahmen nicht auf einen VoxBook-Server hoch.
 
 ### Lokal gespeicherte App-Daten
-VoxBook kann lokal unter anderem Lesepositionen, Verweise auf PDFs in deiner Sammlung, Einstellungen, Farbschemata, gewählte Erzählerstimmen, eigene Stimmprofile und heruntergeladene Sprachmodelle speichern.
+VoxBook kann lokal unter anderem Lesepositionen, Verweise auf PDFs in deiner Sammlung, Einstellungen, Farbschemata, gewählte Erzählerstimmen, eigene Stimmprofile, heruntergeladene Sprachmodelle und den aktuellen Hörbuch-Wiedergabestand speichern, damit unterstützte Medienoberflächen wie Android Auto die Wiedergabe fortsetzen können.
 
 ## Internetzugriff
-Eine Internetverbindung wird insbesondere für den Download lokaler Sprachmodelle verwendet.
+Eine Internetverbindung wird insbesondere für den Download lokaler Sprachmodelle verwendet. VoxBook lädt oder installiert keine App-APKs selbst. App-Updates werden ausschließlich über Google Play verwaltet.
 
-Die über Google Play verteilte VoxBook-Version erhält App-Updates über Google Play. Sideload-/Test-Builds können zusätzlich auf GitHub nach VoxBook-Updates suchen und nur dann eine neue VoxBook-APK von GitHub herunterladen, wenn du ein In-App-Update ausdrücklich startest.
+Bei normalen Modell-Downloads kann der jeweilige Hosting-Dienst technische Verbindungsdaten wie die IP-Adresse sehen.
 
-Bei normalen Internet-Downloads kann der jeweilige Hosting-Dienst technische Verbindungsdaten wie die IP-Adresse sehen.
+## Android Auto
+Wenn du VoxBook mit Android Auto nutzt, stellt VoxBook dem Android-Auto-System grundlegende Medieninformationen und Wiedergabesteuerungen zur Verfügung, damit das aktuelle Hörbuch im Fahrzeug angezeigt und gesteuert werden kann. Dokumenttexte und gespeicherte Stimmaufnahmen werden dafür nicht an einen VoxBook-Server übertragen.
 
 ## Werbung und Analyse
 VoxBook enthält kein eigenes Werbe-SDK und sammelt nicht bewusst Analyseprofile, Werbe-IDs oder Nutzungsprofile zu Werbezwecken.
@@ -86,7 +89,7 @@ VoxBook enthält kein eigenes Werbe-SDK und sammelt nicht bewusst Analyseprofile
 VoxBook verkauft keine personenbezogenen Daten und sendet Dokumentinhalte oder gespeicherte Stimmaufnahmen nicht bewusst an Werbetreibende oder Datenhändler.
 
 ## Berechtigungen
-VoxBook kann Android-Berechtigungen anfordern, die für Funktionen notwendig sind, insbesondere Mikrofonzugriff für Sprachaufnahmen sowie Benachrichtigungs-/Medienfunktionen für die Hintergrundwiedergabe. Die Google-Play-Version fordert keine Berechtigung zum Installieren von APK-Paketen aus unbekannten Quellen an.
+VoxBook kann Android-Berechtigungen anfordern, die für Funktionen notwendig sind, insbesondere Mikrofonzugriff für Sprachaufnahmen sowie Benachrichtigungs-/Medienfunktionen für die Hintergrundwiedergabe. VoxBook fordert keine Berechtigung zum Installieren von APK-Paketen aus unbekannten Quellen an.
 
 ## Änderungen
 Diese Datenschutzerklärung kann angepasst werden, wenn sich die Funktionen von VoxBook ändern. Die aktuelle Fassung wird in diesem Repository veröffentlicht.
