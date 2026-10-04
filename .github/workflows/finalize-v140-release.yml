@@ -1,0 +1,22 @@
+name: Finalize VoxBook 1.4.0 Release Metadata
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release-v140-meta]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update release title and notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit v1.4.0 --repo "$GITHUB_REPOSITORY" \
+            --title "VoxBook 1.4.0 – Google Play Release" \
+            --notes "VoxBook 1.4.0 is the Google Play release build. App updates are managed exclusively through Google Play; both the Play AAB and the direct-install tester APK contain no GitHub APK self-updater, no REQUEST_INSTALL_PACKAGES permission, and no unknown-app installer path. The release targets Android 16 / API 36, includes Android Auto media browsing and transport controls, improves Pocket-TTS audio with peak-safe PCM cleanup and higher decode quality, and passes the native 16 KB page-size alignment check for both libonnxruntime.so and libpockettts_jni.so. The in-app privacy-policy entry point, PDF/text audiobook reading, local voice profiles, background playback, saved reading position, and help features remain included."
